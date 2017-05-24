@@ -51,6 +51,7 @@
 #define GP_MODULE_ID_RF4CEBINDVALIDATIONAPI     42
 #define GP_MODULE_ID_SNIFFERAPI                 68
 #define GP_MODULE_ID_KEYSCAN                    12
+#define GP_MODULE_ID_IRTXAPI                    102
 #define GP_MODULE_ID_RANDOMAPI                  108
 #define GP_MODULE_ID_MACDISPATCHERAPI           114
 #define GP_MODULE_ID_ENCRYPTIONAPI              124

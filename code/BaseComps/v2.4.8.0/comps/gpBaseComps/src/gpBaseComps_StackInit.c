@@ -231,7 +231,7 @@ void gpBaseComps_StackInit(void)
 
     gpKeyScan_Init();
 
-
+    gpIrTx_Init();
 
 
 

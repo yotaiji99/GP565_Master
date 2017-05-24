@@ -50,6 +50,7 @@ SECTIONS
     .version_sw         0x8050 : { KEEP(*(.version_sw))   ;   } > flash
     .version_app0       0x8060 :
     {
+      gpIRDatabase_version_app0 = . ;
       KEEP(*(.version_app0)) ;
     } > flash
     .version_fgt        0x8064 : { KEEP(*(.version_fgt)) ;     } > flash
@@ -63,6 +64,15 @@ SECTIONS
        KEEP(*(.vectors))
     } > flash
 
+    .gpIRDatabase 0x8200:
+    {
+        gpIRDatabase_Start = . ;
+        *gpIRDatabase_ReferenceTable*.*(.rodata) ;
+        *gpIRDatabase_Data_*.*(.rodata) ;
+        . = . > 0x7900 ? . : 0x7900; /* debug mode = 0x6B00*/
+        gpIRDatabase_End = . ;		/*release mode = 0x7800*/
+    } >flash
+    ASSERT (SIZEOF(.gpIRDatabase) == 0x7900, "gpIRDatabase > 0x7900 reserved bytes")
 
     .dummyalign   : { . = ALIGN(0x100); } > flash
     .functable    : { *(.functable) } >flash
