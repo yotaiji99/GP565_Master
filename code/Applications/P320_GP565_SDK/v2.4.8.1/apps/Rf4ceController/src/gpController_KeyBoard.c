@@ -236,7 +236,6 @@ static Bool Keyboard_HandleSetup( UInt8 nKeysPrsd, gpKeyboardBasic_pKeyInfo_t pK
                     gpSched_ScheduleEvent((1000000UL * KEYBOARD_SETUP_HOLD_TIME), Keyboard_SetupKeyPressed);
 
                     /* Release the key pressed first */
-                    gpController_KeyBoard_cbMsg(gpController_KeyBoard_MsgId_KeysReleasedIndication, NULL);
                     gpController_KeyBoard_cbMsg(gpController_KeyBoard_MsgId_SetupKeysPressedIndication, NULL);
 
                     keysHandled = true;
@@ -253,17 +252,21 @@ static Bool Keyboard_HandleSetup( UInt8 nKeysPrsd, gpKeyboardBasic_pKeyInfo_t pK
     }
     if(nKeysPrsd == 0)
     {
+	    gpController_PendingKey.pendingKeyInfo.keyInfo = 0xff;
         if (readyToGotoSetupMode)
         {
             readyToGotoSetupMode = false;
             gpController_KeyBoard_cbMsg(gpController_KeyBoard_MsgId_SetupKeysReleasedIndication, NULL);
+            gpController_KeyBoard_cbMsg(gpController_KeyBoard_MsgId_KeysReleasedIndication, NULL);
             keysHandled = true;
         }
         if( gpSched_UnscheduleEvent(Keyboard_SetupKeyPressed) )
         {
             /* Setup key is released before the SETUP_TIMEOUT. */
             gpController_KeyBoard_cbMsg(gpController_KeyBoard_MsgId_SetupKeysReleasedIndication, NULL);
+            gpController_KeyBoard_cbMsg(gpController_KeyBoard_MsgId_KeysReleasedIndication, NULL);
             keysHandled = true;
+			readyToGotoSetupMode = false;
         }
     }
 

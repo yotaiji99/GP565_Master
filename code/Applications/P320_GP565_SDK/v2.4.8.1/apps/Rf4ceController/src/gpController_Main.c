@@ -117,6 +117,8 @@ static UInt8 ControllerProfileId = 0xFF;
 static UInt16 ControllerTxOptions = 0;
 static UInt16 ControllerVendorId  = GP_RF4CE_NWKC_VENDOR_IDENTIFIER;
 static Bool ControllerKeyPressConfirmPending = false;
+Bool multipleKeysPressed = false;
+Bool LedSequenceBlink = false;
 
 
 
@@ -177,6 +179,9 @@ searchTvIrCode_t     gpSetup_TvHunt;
 
 //Static buffer needed for SetRIB request
 UInt8 gpStatus_RIBData[11];
+UInt32 gpController_ShortRfRetriesPeriod;       // RfRetriesPeriod
+Bool                             gpController_KeyReleased;           //flag tracking of the pending key is already released or not
+gpController_PendingKey_t        gpController_PendingKey;            //copy of key info of the key which is currently handled (is also use to block new keys if previous is not handled completly)
 
 
 /* keyboard mapping needs to match gpController_KeyBoard module. */
@@ -983,6 +988,7 @@ Bool Controller_HandleIRKeys(gpController_Zrc_Msg_t *pZrc,gpController_KeyBoard_
     gpProgrammableKey_TvIrDesc_t* pDesc;
     if((pZrc->KeyPressedIndication.keys.count == 0))
     {
+	    gpController_PendingKey.pendingKeyInfo.keyInfo = 0xff;
     	//설정모드일경우,lvd표시하지않음.
     	if(ControllerOperationMode != gpController_OperationSetsequence)
 			gpSched_ScheduleEvent(100000L,LED_BatteryLow_Indicate);
@@ -999,10 +1005,20 @@ Bool Controller_HandleIRKeys(gpController_Zrc_Msg_t *pZrc,gpController_KeyBoard_
             ControllerOperationMode = gpController_OperationModeNormal;
             return true;
         }
+    	multipleKeysPressed = false;
 		return false;
     }
+
+	if(multipleKeysPressed)
+	{
+        ControllerOperationMode = gpController_OperationModeNormal;
+        return true;
+	}
+
     if(pZrc->KeyPressedIndication.keys.count > 1)
     {
+        multipleKeysPressed = true;
+		gpSched_UnscheduleEvent(Keyboard_SetupKeyPressed);//double key입력시 setup되지않게 처리.				        
     	//pZrc->KeyPressedIndication.keys.count = 0;
         if(ControllerOperationMode == gpController_OperationModeIR)
         {
@@ -1014,6 +1030,7 @@ Bool Controller_HandleIRKeys(gpController_Zrc_Msg_t *pZrc,gpController_KeyBoard_
             ControllerOperationMode = gpController_OperationModeNormal;
             return false;
         }
+    }
     }
 
 //power,input은 모두 TV로 출력.
@@ -1383,6 +1400,23 @@ void gpStatus_UpdateBatteryStatus(UInt8 type)
 
 }
 
+void gpController_LockKeyHandling(gpKeyboard_pKeyInfo_t pKey)
+{
+    GP_LOG_PRINTF("LOCK KEY",0);
+    gpController_KeyReleased = false;
+    gpController_PendingKey.pendingKeyInfo = *pKey;
+}
+
+void gpController_ReleaseKeyHandling(void)
+{
+    GP_LOG_PRINTF("RELEASE KEY",0);
+    gpController_PendingKey.pendingKeyInfo.keyInfo = 0xff;
+}
+
+Bool gpController_HasLockedKeyHandling(void)
+{
+    return (gpController_PendingKey.pendingKeyInfo.keyInfo != 0xFF);
+}
 
 void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
                                     gpController_KeyBoard_Msg_t *pMsg)
@@ -1519,6 +1553,39 @@ void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
 			    UInt8 	batLevel;
                 Controller_KeyIndicesToKeyCodes(&(pMsg->keys), &(msgZrc.KeyPressedIndication.keys));
 
+				if((gpController_PendingKey.pendingKeyInfo.keyInfo != 0xff) 
+					|| (msgZrc.KeyPressedIndication.keys.count == 0) && (ControllerBindingId == 0xff))
+				{
+					if((gpController_PendingKey.pendingKeyInfo.keyInfo != msgZrc.KeyPressedIndication.keys.codes[0])
+						||(msgZrc.KeyPressedIndication.keys.count != 1))
+					{
+						if(msgZrc.KeyPressedIndication.keys.codes[0]!=0x0A)
+						{
+							gpSched_UnscheduleEvent(Keyboard_SetupKeyPressed);//double key입력시 setup되지않게 처리.				        
+							if(!GP_WB_READ_IR_BUSY())
+							{
+								Controller_LedEnable(false, gpController_Led_ColorRed);
+								Controller_LedEnable(false, gpController_Led_ColorGreen);
+							}
+					    	if(ControllerOperationMode != gpController_OperationSetsequence)
+								gpSched_ScheduleEvent(100000L,LED_BatteryLow_Indicate);
+					        gpStatus_UpdateBatteryStatus(gpStatus_UpdateTypeIR);
+						    if (gpController_BatterMonitor_BatteryLevelLoadedUpdated)
+						    {
+								gpSched_ScheduleEvent(0, gpController_SendBatteryStatusRequest);
+						    }
+				            ControllerOperationMode = gpController_OperationModeNormal;
+							if(msgZrc.KeyPressedIndication.keys.count > 1)
+						    	multipleKeysPressed = true;
+							else if(msgZrc.KeyPressedIndication.keys.count == 0)
+						    	multipleKeysPressed = false;
+							return;
+						}
+					}
+				}
+				//현재key를 backup.
+			    gpController_PendingKey.pendingKeyInfo.keyInfo = msgZrc.KeyPressedIndication.keys.codes[0];
+//				gpSched_UnscheduleEvent(LED_BatteryLow_Indicate);
 #ifdef GP_DIVERSITY_APP_ZID
                 if(Controller_HandleZIDKeys(&msgZrc))
                 {
@@ -1562,7 +1629,9 @@ void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
 					    {
 							gpSched_ScheduleEvent(0, gpController_SendBatteryStatusRequest);
 					    }
+		        		multipleKeysPressed = false;
 					}
+
                 }
                 msgZrc.KeyPressedIndication.bindingId = ControllerBindingId;
                 msgZrc.KeyPressedIndication.profileId = ControllerProfileId;
@@ -1644,12 +1713,16 @@ void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
 
 			if(ControllerOperationMode != gpController_OperationModeSetup)
             	Controller_LedEnable(false,gpController_Led_ColorGreen);
-            msgZrc.KeyPressedIndication.keys.count = 0;
-            msgZrc.KeyPressedIndication.bindingId = ControllerBindingId;
-            msgZrc.KeyPressedIndication.profileId = ControllerProfileId;
-            msgZrc.KeyPressedIndication.vendorId  = ControllerVendorId;
-            msgZrc.KeyPressedIndication.txOptions = ControllerTxOptions;
-            gpController_Zrc_Msg(gpController_Zrc_MsgId_KeyPressedIndication, &msgZrc);
+			if(ControllerBindingId!=0xFF)
+			{
+				msgZrc.KeyPressedIndication.keys.count = 0;
+	            msgZrc.KeyPressedIndication.bindingId = ControllerBindingId;
+	            msgZrc.KeyPressedIndication.profileId = ControllerProfileId;
+	            msgZrc.KeyPressedIndication.vendorId  = ControllerVendorId;
+	            msgZrc.KeyPressedIndication.txOptions = ControllerTxOptions;
+	            gpController_Zrc_Msg(gpController_Zrc_MsgId_KeyPressedIndication, &msgZrc);
+			}
+	        multipleKeysPressed = false;
 			break;
         }
 

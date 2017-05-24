@@ -44,6 +44,7 @@
  *****************************************************************************/
 #define APP_DEFAULT_MODE                                gpController_ModeIRNec
 #define APP_SEND_VC_TO_DTA_DEFAULT                      true
+#define IS_CURRENT_MODE_ZRC()                           (gpController_Mode == gpController_ModeZrc)
 
 
 
@@ -89,6 +90,13 @@ typedef struct  {
     UInt16 lastAttemptedTvCode;
 } searchTvIrCode_t;
 
+typedef struct
+{
+    gpKeyboard_KeyInfo_t    pendingKeyInfo;
+    UInt8                   pairingRef;
+} gpController_PendingKey_t;
+
+
 /*****************************************************************************
  *                    Public Function Prototypes
  *****************************************************************************/
@@ -109,6 +117,9 @@ extern searchTvIrCode_t     gpSetup_TvHunt;
 extern void setup_SearchTvIrCodeNextAttempt( void );
 extern UInt32 gpStatus_NumberOfSentIR;
 extern UInt32 gpStatus_NumberOfSentRF;
+extern Bool multipleKeysPressed;
+extern Bool gpController_KeyReleased;           //flag tracking of the pending key is already released or not
+extern gpController_PendingKey_t        gpController_PendingKey;            //copy of key info of the key which is currently handled (is also use to block new keys if previous is not handled completly)
 GP_API UInt8 ControllerOperationMode;
 
 #endif /* _GPCONTROLLER_MAIN_H_ */
