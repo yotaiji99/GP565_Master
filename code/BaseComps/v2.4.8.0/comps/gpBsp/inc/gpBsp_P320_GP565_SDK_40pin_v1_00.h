@@ -48,6 +48,7 @@
 
 #include "gpHal_kx_regprop.h"
 #include "gpHal_kx_MSI_basic.h"
+#include "gpHal_kx_enum.h"
 
 #define HAL_LED_ACTIVE_LOW
 
@@ -101,6 +102,7 @@
  *                    UART
  *****************************************************************************/
 
+#ifdef GP_DIVERSITY_XSIF_DEBUG_ENABLED
 #define HAL_UART_MAPPING_TX           GP_WB_ENUM_GENERIC_SEVEN_PINMAP_MAPPING_C //Mapping C - pin 21 - GPIO0
 #define UART_TX_GPIO                  0 //GPIO0
 
@@ -111,18 +113,19 @@
 #ifndef GP_BSP_UART_SCOM_BAUDRATE
 #define GP_BSP_UART_SCOM_BAUDRATE   57600
 #endif //GP_BSP_UART_SCOM_BAUDRATE
+#endif
 
 /*****************************************************************************
  *                    XSIF
  *****************************************************************************/
-
+#ifdef GP_DIVERSITY_XSIF_DEBUG_ENABLED
 #define HAL_XSIF_ENABLED
 
-#define HAL_SIF_MAPPING_MISO           GP_WB_ENUM_GENERIC_SEVEN_PINMAP_MAPPING_B //Mapping B - pin 27 - GPIO6
-#define HAL_SIF_MAPPING_MOSI           GP_WB_ENUM_GENERIC_SEVEN_PINMAP_MAPPING_B //Mapping B - pin 28 - GPIO7
-#define HAL_SIF_MAPPING_SCLK           GP_WB_ENUM_GENERIC_SEVEN_PINMAP_MAPPING_B //Mapping B - pin 29 - GPIO8
-#define HAL_SIF_MAPPING_LOADB           GP_WB_ENUM_GENERIC_SEVEN_PINMAP_MAPPING_B //Mapping B - pin 30 - GPIO9
-
+#define HAL_SIF_MAPPING_MISO           GP_WB_ENUM_GENERIC_SEVEN_PINMAP_MAPPING_A//Mapping D - pin 31 - GPIO10
+#define HAL_SIF_MAPPING_MOSI           GP_WB_ENUM_GENERIC_SEVEN_PINMAP_MAPPING_A //Mapping D - pin 32 - GPIO11
+#define HAL_SIF_MAPPING_SCLK           GP_WB_ENUM_GENERIC_SEVEN_PINMAP_MAPPING_A //Mapping D - pin 33 - GPIO12
+#define HAL_SIF_MAPPING_LOADB           GP_WB_ENUM_GENERIC_SEVEN_PINMAP_MAPPING_A //Mapping D - pin 34 - GPIO13
+#endif
 /*****************************************************************************
  *                    IR
  *****************************************************************************/
@@ -153,10 +156,10 @@
  *                    GPIO - Unused
  *****************************************************************************/
 
+#ifdef GP_DIVERSITY_XSIF_DEBUG_ENABLED
 #define HAL_UNUSED_INIT() do { \
     /* Pull down unused pins*/ \
     GP_WB_WRITE_IOB_GPIO_19_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
-    GP_WB_WRITE_IOB_GPIO_20_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
     GP_WB_WRITE_IOB_GPIO_22_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
     GP_WB_WRITE_IOB_GPIO_23_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
     GP_WB_WRITE_IOB_GPIO_24_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
@@ -166,7 +169,26 @@
     GP_WB_WRITE_IOB_GPIO_28_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
     GP_WB_WRITE_IOB_GPIO_29_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
 } while(false)
-
+#else
+#define HAL_UNUSED_INIT() do { \
+    /* Pull down unused pins*/ \
+    GP_WB_WRITE_IOB_GPIO_0_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_6_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_14_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_15_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_19_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_20_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_21_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_22_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_23_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_24_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_25_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_26_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_27_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_28_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_29_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+} while(false)
+#endif
 /*****************************************************************************
  *                    IO Pending
  *****************************************************************************/
@@ -180,24 +202,31 @@
  *                    Generic
  *****************************************************************************/
 
+#ifdef GP_DIVERSITY_XSIF_DEBUG_ENABLED
 #define HAL_BSP_INIT() do{ \
     /*Disable bus keeper/PU/PD on UART_TX*/ \
     GP_WB_WRITE_IOB_GPIO_0_CFG(GP_WB_ENUM_GPIO_MODE_FLOAT); \
     /*SIF MISO mapping*/ \
-    GP_WB_WRITE_IOB_GPIO_6_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_15_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
     GP_WB_WRITE_XAP5_GP_SIF_MISO_MAPPING(HAL_SIF_MAPPING_MISO); \
     /*SIF MOSI mapping*/ \
-    GP_WB_WRITE_IOB_GPIO_7_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_16_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
     GP_WB_WRITE_XAP5_GP_SIF_MOSI_MAPPING(HAL_SIF_MAPPING_MOSI); \
     /*SIF SCLK mapping*/ \
-    GP_WB_WRITE_IOB_GPIO_8_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
+    GP_WB_WRITE_IOB_GPIO_17_CFG(GP_WB_ENUM_GPIO_MODE_PULLDOWN); \
     GP_WB_WRITE_XAP5_GP_SIF_CLK_MAPPING(HAL_SIF_MAPPING_SCLK); \
     /*SIF LOADB mapping*/ \
-    GP_WB_WRITE_IOB_GPIO_9_CFG(GP_WB_ENUM_GPIO_MODE_PULLUP); \
+    GP_WB_WRITE_IOB_GPIO_14_CFG(GP_WB_ENUM_GPIO_MODE_PULLUP); \
     GP_WB_WRITE_XAP5_GP_SIF_LOADB_MAPPING(HAL_SIF_MAPPING_LOADB); \
     GP_WB_WRITE_IOB_GPIO_21_CFG(GP_WB_ENUM_GPIO_MODE_PULLUP); \
 } while(false)
-
+#else
+#define HAL_BSP_INIT() do{ \
+    /*Disable bus keeper/PU/PD on UART_TX*/ \
+    GP_WB_WRITE_IOB_GPIO_0_CFG(GP_WB_ENUM_GPIO_MODE_FLOAT); \
+    GP_WB_WRITE_IOB_GPIO_21_CFG(GP_WB_ENUM_GPIO_MODE_PULLUP); \
+} while(false)
+#endif
 #define HAL_BSP_INIT_SLEEP_IO_CONFIG() do{ \
 } while(false)
 
