@@ -51,10 +51,10 @@
 #define KEYBOARD_SETUP_SIMULTANEOUS_DELTA_TIME    200000UL
 #define KEYBOARD_SETUP_KEYS_COUNT                 1
 
-#define KEYBOARD_SETUP_KEYS                       {11, 0xFF}
+#define KEYBOARD_SETUP_KEYS                       {0x17, 0xFF}		//setup key
 
 #define KEYBOARD_SETUP_HOLD_TIME                  3 /* secondes */
-#define KEYBOARD_SETUP_SENDS_MESSAGE              true
+#define KEYBOARD_SETUP_SENDS_MESSAGE              false	//true		//setup key를 눌럿을대 IR출력유무결정. 
 
 #define INVALID_KEY                         0xFF
 #define KEYBOARD_STUCK_KEY_TIMEOUT          30000000UL
@@ -72,7 +72,7 @@ static ROM gpKeyboardBasic_Attr_t gpControllerKeyboardAttr =
 };
 
 
-static ROM UInt8 gpController_SetupKeys[2] = KEYBOARD_SETUP_KEYS;
+volatile static ROM UInt8 gpController_SetupKeys[2] = KEYBOARD_SETUP_KEYS;
 
 /*******************************************************************************
  *                      Static Defines
@@ -147,7 +147,7 @@ void gpKeyboardBasic_cbKeyIndication(UInt8 nKeysPrsd, gpKeyboardBasic_pKeyInfo_t
 /*******************************************************************************
  *                      Static Functions
  ******************************************************************************/
-static void Keyboard_SetupKeyPressed( void )
+void Keyboard_SetupKeyPressed( void )
 {
     readyToGotoSetupMode = true;
     gpController_KeyBoard_cbMsg(gpController_KeyBoard_MsgId_SetupEnteredIndication, NULL);
@@ -163,31 +163,35 @@ static Bool Keyboard_HandleSetup( UInt8 nKeysPrsd, gpKeyboardBasic_pKeyInfo_t pK
 
     if(KEYBOARD_SETUP_KEYS_COUNT == 1)
     {
-        if(nKeysPrsd == 1)
+        if((nKeysPrsd == 1))//&&(!multipleKeysPressed))//double key해제시 setup되지않게 처리.
         {
-            /* Single key setup */
-            if(pKeyIndList[0].keyIndex == gpController_SetupKeys[0])
-            {
-                /* Setup key must be pressed for a certain time, so start the timer*/
-                gpSched_ScheduleEvent( (1000000UL * KEYBOARD_SETUP_HOLD_TIME) , Keyboard_SetupKeyPressed );
+        	if(ControllerOperationMode == gpController_OperationModeNormal)
+        	{
+	            /* Single key setup */
+	            if((pKeyIndList[0].keyIndex == gpController_SetupKeys[0]) && (readyToGotoSetupMode== false))
+	            {
+	                /* Setup key must be pressed for a certain time, so start the timer*/
+	                gpSched_ScheduleEvent( (1000000UL * KEYBOARD_SETUP_HOLD_TIME) , Keyboard_SetupKeyPressed );
 
-                gpController_KeyBoard_cbMsg(gpController_KeyBoard_MsgId_SetupKeysPressedIndication, NULL);
+	                gpController_KeyBoard_cbMsg(gpController_KeyBoard_MsgId_SetupKeysPressedIndication, NULL);
 
-                if (KEYBOARD_SETUP_SENDS_MESSAGE)
-                {
-                    /* Setup key is a dedicated key, only handle in setup mode */
-                    keysHandled = true;
-                }
-                else
-                {
-                    /* Setup key is a normal key, to be also handled by the application */
-                    keysHandled = false;
-                }
-            }
-            else
-            {
-                keysHandled = false;
-            }
+	                if (KEYBOARD_SETUP_SENDS_MESSAGE)
+	                {
+	                    /* Setup key is a dedicated key, only handle in setup mode */
+	                    keysHandled = true;
+	                }
+	                else
+	                {
+		                    /* Setup key is a normal key, to be also handled by the application */
+	                    keysHandled = false;
+	                }
+	            }
+	            else
+	            {
+					readyToGotoSetupMode = false;
+					keysHandled = false;
+	            }
+        	}
         }
     }
     if(KEYBOARD_SETUP_KEYS_COUNT == 2 )

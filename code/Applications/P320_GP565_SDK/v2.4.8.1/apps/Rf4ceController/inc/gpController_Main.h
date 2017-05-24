@@ -43,6 +43,7 @@
  *                    Macro Definitions
  *****************************************************************************/
 #define APP_DEFAULT_MODE                                gpController_ModeIRNec
+#define APP_SEND_VC_TO_DTA_DEFAULT                      true
 
 
 
@@ -93,6 +94,7 @@ typedef struct  {
  *****************************************************************************/
 
 extern Bool gpController_SelectDeviceInDatabase( UInt16 deviceId );
+extern void gpController_SetDtaMode( Bool mode );
 extern void setup_cbKeyIndicationSearchTvIrCode( gpKeyboard_pKeyInfo_t pKey );
 extern void LED_SetOk_Control(void);
 extern void LED_SetError_Control(void);
@@ -101,6 +103,7 @@ extern Bool gpController_PowerToggle;
 extern UInt8 PowerToggle;
 extern gpController_Mode_t             gpController_Mode;                  //current controller application mode
 extern gpController_cbKeyIndication_t  gpController_cbKeyIndication; //function pointer used to forward the key-information to the mode/setup specific handling
+extern UInt8 ControllerOperationSpecial;
 extern UInt32 gpStatus_NumberOfSentIR;
 extern UInt32 gpStatus_NumberOfSentRF;
 GP_API UInt8 ControllerOperationMode;

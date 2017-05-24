@@ -40,6 +40,7 @@
  ******************************************************************************/
 #include "global.h"
 #include "gpController.h"
+#include "gpController_Led.h"
 
 /*******************************************************************************
  *                    Type Definitions
@@ -77,15 +78,47 @@
 */
 typedef UInt8 gpController_Setup_MsgId_t;
 //@}
+typedef UInt8 gpSetup_Command_t;
+typedef union {
+    gpController_Keys_t keys;
+} gpController_Setup_Msg_t;
+typedef union {
+    gpController_Keys_t keys;
+} gpController_IR_Msg_t;
+
+
+
+#define BIND_MSO_COMBO          0x00
+#define BIND_ZRC_COMBO          0x01
+#define INIT_IR_TV_SETUP        0x02
+#define ENTER_XIR_MODE          0x04
+#define ENTER_IRMOTO_MODE       0x05
+#define ENTER_IRCISCO_MODE      0x06
+#define SETUP_OTHERS            0x07
+
+#define FACTORY_RESET           0x08
+#define BLINK_SW_VERSION        0x09
+#define RESET_TV_IR_CODE        0x0a
+#define UNPAIR_RF4CE            0x0b
+#define BLINK_TV_IR_CODE        0x0c
+#define BLINK_BATTERY_STATUS    0x0d
+#define SEND_VC_TO_DTA          0x0e
+#define SEND_VC_TO_TV           0x0f
+#define SEARCH_TV_IR_CODE       0x10
+#define BLINK_MODE              0x11
+#define ENABLE_RF_STATISTICS    0x12
+#define ENABLE_DYN_RF_STAT      0x20
+#define ENTER_DYN_STAT_CNT      0x21
+#define SETUP_CMD_UNPAIR_IR		0x22
+#define SET_VENDOR_ID           0x14
+
+#define INVALID_SETUP_COMMAND   0xff
+
 
 /** @typedef gpController_Setup_Msg_t
  *  The gpController_Setup_Msg_t type specifies Setup specific messages to
  *  exchange with the MAIN module.
 */
-typedef union {
-    gpController_Keys_t keys;
-} gpController_Setup_Msg_t;
-
 
 #define SETUP_CMD_ZRC_BIND                  0x01
 #ifdef GP_DIVERSITY_APP_MSO
@@ -94,6 +127,7 @@ typedef union {
 #define SETUP_CMD_UNBIND                    0x04
 #define SETUP_CMD_FACTORY_RESET             0x05
 #define SETUP_CMD_SET_VENDOR_ID             0x06
+#define IR_TV_SETUP							0x07
 #define SETUP_CMD_INVALID                   0xff
 
 typedef UInt8 Setup_CommandId_t;
@@ -103,6 +137,19 @@ typedef struct
     Setup_CommandId_t commandId;
     UInt8             keyIndex;
 } Setup_CommandTableEntry_t;
+
+typedef union setup_Data
+{
+    UInt8   expectedButton;
+    struct  {
+        UInt8 keyCount;
+        union
+        {
+            UInt8   initialKey;
+            UInt32  efcCode;
+        } data;
+    } RemapKey;
+} setup_Data_t;
 
 
 /******************************************************************************
@@ -124,8 +171,8 @@ GP_API void gpController_Setup_Init(void);
  *  @param msgId Identifier for the message.
  *  @param pMsg  Data passed in the message (NULL for indication without data).
  */
-GP_API void gpController_Setup_Msg(     gpController_Setup_MsgId_t msgId,
-                                        gpController_Setup_Msg_t *pMsg);
+GP_API void gpController_Setup_Msg(     gpController_Setup_MsgId_t msgId,UInt8 paramLength,
+                                        gpController_Setup_Msg_t *pMsg,UInt8 * params);
 
 /** @ingroup SETUP
  *
@@ -138,3 +185,7 @@ GP_API void gpController_Setup_cbMsg(    gpController_Setup_MsgId_t msgId,
                                          gpController_Setup_Msg_t *pMsg);
 #endif /* _GPCONTROLLER_SETUP_H_ */
 
+GP_API void Setup_Timeout(void);
+GP_API void Setup_Timeout_without_setno( void );
+
+GP_API setup_Data_t         gpSetup_Data;

@@ -237,4 +237,5 @@ GP_API void gpController_KeyBoard_Msg(  gpController_KeyBoard_MsgId_t msgId,
 GP_API void gpController_KeyBoard_cbMsg(    gpController_KeyBoard_MsgId_t msgId,
                                             gpController_KeyBoard_Msg_t *pMsg);
 
+GP_API void Keyboard_SetupKeyPressed( void );
 #endif /* _GPCONTROLLER_KEYBOARD_H_ */

@@ -149,9 +149,16 @@ controller_KeyDesc_t controller_TvIrKey_Db[APP_NUMBER_OF_TV_IR_KEYS];
 UInt8 keyTransmitAction[ APP_TOTAL_NUMBER_OF_KEYS ];
 gpKeyboard_Command_t  gpKeyboard_Cmd = {gpKeyboard_CmdTypeInvalid, {0x0}};
 UInt16 gpDeviceID = 0xFFFF;             // default device id
+
+Bool                            gpController_SetupBlocked;
+Bool                            gpController_sendVolumeControlToDta=1;//where to send Volume Control (VC): DTA or TV
+gpRf4ce_VendorId_t				gpController_VendorID;              //
+
 gpController_cbKeyIndication_t  gpController_cbKeyIndication; //function pointer used to forward the key-information to the mode/setup specific handling
 gpController_Mode_t             gpController_Mode=gpController_ModeIRNec;                  //current controller application mode
 
+UInt8 ControllerOperationSpecial=0xff;
+Bool gpSetup_SetupBusy = false;
 //Static buffer needed for SetRIB request
 UInt8 gpStatus_RIBData[11];
 
@@ -897,6 +904,41 @@ Bool Controller_HandleAudioKeys(gpController_Zrc_Msg_t *pZrc)
     return tmp;
 }
 
+UInt8 Keyboard_GetCommandLength( gpKeyboard_LogicalId_t logicalId )
+{
+    switch( logicalId )
+    {
+        case gpKeyboard_LogicalId_VolumeDown:
+        case gpKeyboard_LogicalId_VolumeUp:
+        //case gpKeyboard_LogicalId_SetupMenu:
+        {
+            return 1;
+        } 
+        // gpKeyboard_LogicalId_Number2 is used as command code to configure the remote
+        case gpKeyboard_LogicalId_Number9:
+        {
+            return 3;
+        }
+        // gpKeyboard_LogicalId_Number1 is used as command code to enter the TV brand number
+        case gpKeyboard_LogicalId_Number1:
+        {
+            return 5;
+        }
+    }
+    // if no length is avalable, set length 1
+    return gpKeyboard_CmdTypeInvalid;
+}
+
+static void Keyboard_SetupTimeout( void )
+{
+    // Cleanup command
+    gpKeyboard_Cmd.cmd = gpKeyboard_CmdTypeInvalid;
+    MEMSET( gpKeyboard_Cmd.params, gpKeyboard_CmdTypeInvalid, GP_KEYBOARD_MAX_CMD_PARAM_LENGTH );
+
+    gpController_Setup_Msg(gpController_Setup_MsgId_SetupEnterIndication, NULL, NULL,NULL);
+}
+
+
 Bool Controller_HandleIRKeys(gpController_Zrc_Msg_t *pZrc,gpController_KeyBoard_Msg_t *pMsg)
 {
 
@@ -1061,6 +1103,103 @@ Bool Controller_HandleIRKeys(gpController_Zrc_Msg_t *pZrc,gpController_KeyBoard_
 }
 
 
+//Setup+990 Blink IR
+void setup_cbKeyIndicationTVCode( UInt8 pKey )
+{
+    UInt16 IRTableId;
+	
+    if( pKey == NULL )
+    {
+        return;
+    }
+    IRTableId = gpIRDatabase_GetIRTableId();
+	IRTableId+=10000;
+    if( (pKey == gpSetup_Data.expectedButton) && ( IRTableId!= 0xFFFF) )
+    {
+        UInt8 i;
+        // add the 1 in the beginning:
+        for( i=0; i<(5 - (pKey - gpKeyboard_LogicalId_Number0)); i++ )
+        {
+            IRTableId = IRTableId/10;
+        }
+
+        if( gpSetup_Data.expectedButton != gpKeyboard_LogicalId_Number5 )
+        {
+            gpSetup_Data.expectedButton++;
+            gpLed_GenerateBlinkSequence( gpController_Led_ColorRed, GP_LED_BLINK_NUMBER(IRTableId % 10) );
+			LED_Sequence_Control(Controller_LedSequenceBlinkIR);
+		    gpSched_ScheduleEvent( 10000000L, Setup_Timeout );
+
+        }
+        else
+        {
+            gpLed_GenerateBlinkSequence( gpController_Led_ColorRed, GP_LED_BLINK_NUMBER(IRTableId % 10) );
+			LED_Sequence_Control(Controller_LedSequenceBlinkIR);
+			//ControllerOperationMode = gpController_OperationModeNormal;
+            ControllerOperationMode = gpController_OperationSetsequence;
+			gpSched_UnscheduleEvent(Setup_Timeout);
+			gpSched_UnscheduleEvent(Setup_Timeout);
+			gpSched_UnscheduleEvent(Setup_Timeout);
+			gpSched_UnscheduleEvent(Setup_Timeout);
+			gpSched_ScheduleEvent( 1000000L, LED_SetOk_Control );
+//			LED_SetOk_Control();
+		}
+    }
+	else
+	{
+		gpSched_UnscheduleEvent(Setup_Timeout);
+		gpSched_UnscheduleEvent(Setup_Timeout);
+		gpSched_UnscheduleEvent(Setup_Timeout);
+		gpSched_UnscheduleEvent(Setup_Timeout);
+		Setup_Timeout();
+		gpSched_ScheduleEvent( 1000000L, LED_SetError_Control );
+	}
+}
+
+//Setup+983 SW VERSION
+void setup_cbKeyIndicationVersion( UInt8 pKey )
+{
+    if( pKey == NULL )
+    {
+        return;
+    }
+    if( pKey == gpSetup_Data.expectedButton )
+    {
+        UInt8 versionData[] = { 2, 0, 0, 0 };
+
+        ///gpSetup_GetVersionInfo( versionData );
+        if( gpSetup_Data.expectedButton != gpKeyboard_LogicalId_Number4 )
+        {
+            gpSetup_Data.expectedButton++;
+            gpLed_GenerateBlinkSequence( gpController_Led_ColorRed, GP_LED_BLINK_NUMBER(versionData[pKey - gpKeyboard_LogicalId_Number1]) );
+			LED_Sequence_Control(Controller_LedSequenceBlinkIR);
+		    gpSched_ScheduleEvent( 10000000L, Setup_Timeout );
+        }
+        else
+        {
+            // also send out sw version via RIB
+            gpLed_GenerateBlinkSequence( gpController_Led_ColorRed, GP_LED_BLINK_NUMBER(versionData[pKey - gpKeyboard_LogicalId_Number1]) );
+			LED_Sequence_Control(Controller_LedSequenceBlinkIR);
+			//ControllerOperationMode = gpController_OperationModeNormal;
+            ControllerOperationMode = gpController_OperationSetsequence;
+			gpSched_UnscheduleEvent(Setup_Timeout);
+			gpSched_UnscheduleEvent(Setup_Timeout);
+			gpSched_UnscheduleEvent(Setup_Timeout);
+			gpSched_ScheduleEvent( 1000000L, LED_SetOk_Control );
+//			LED_SetOk_Control();
+		}
+        return;
+    }
+	else
+	{
+		gpSched_UnscheduleEvent(Setup_Timeout);
+		gpSched_UnscheduleEvent(Setup_Timeout);
+		gpSched_UnscheduleEvent(Setup_Timeout);
+		Setup_Timeout();
+		gpSched_ScheduleEvent( 1000000L, LED_SetError_Control );
+	}
+}
+
 
 void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
                                     gpController_KeyBoard_Msg_t *pMsg)
@@ -1072,13 +1211,115 @@ void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
         {
             if(ControllerOperationMode == gpController_OperationModeSetup )
             {
-                gpController_Setup_Msg_t msg;
+				gpController_KeyBoard_Msg_t tmpKeycnt=*pMsg;
+				gpController_Setup_Msg_t msg;
+				UInt8 cmdLength;
+            	Bool  done = false;
+	            UInt8 logicalId;
+            	UInt8 i;
+				
                 Controller_KeyIndicesToKeyCodes(&(pMsg->keys), &(msg.keys)) ;
-
+				logicalId = msg.keys.codes[0];
                 /* Forward the keys message to the Setup module. */
-                gpController_Setup_Msg(gpController_Setup_MsgId_KeyPressedIndication, &msg);
+
+
+	            //Fill in command + parameters
+	            if( (gpKeyboard_Cmd.cmd == gpKeyboard_CmdTypeInvalid) && (tmpKeycnt.keys.count==1) ) 
+	            {
+	                //No command yet
+	                cmdLength = Keyboard_GetCommandLength( logicalId );
+	                gpKeyboard_Cmd.cmd = gpKeyboard_CmdTypeExternParsed;
+	                gpKeyboard_Cmd.params[0] = logicalId;
+	                if( cmdLength == 1 )
+	                {
+	           			LED_Sequence_Control(Controller_LedSequenceGrnBlink);
+	                    Controller_LedEnable(true, gpController_Led_ColorGreen);
+	                    done = true;
+	                }
+					else if( cmdLength == gpKeyboard_CmdTypeInvalid)
+	                    done = true;
+					else
+	                {
+	           			LED_Sequence_Control(Controller_LedSequenceGrnBlink);
+	                    Controller_LedEnable(true, gpController_Led_ColorGreen);
+	                }
+						
+
+	            }
+	            else if(tmpKeycnt.keys.count==1)
+	            {
+	                cmdLength = Keyboard_GetCommandLength( gpKeyboard_Cmd.params[0] );
+	                // Fill in code parameters
+	                for( i = 1; i < cmdLength; i++ )
+	                {
+	                    if( gpKeyboard_Cmd.params[i] == gpKeyboard_CmdTypeInvalid )
+	                    {
+	                    	if(i<4)
+                    		{
+			           			LED_Sequence_Control(Controller_LedSequenceGrnBlink);
+			                    Controller_LedEnable(true, gpController_Led_ColorGreen);
+	                    	}
+	                        gpKeyboard_Cmd.params[i] = logicalId;
+	                        break;
+	                    }
+	                }
+
+	                if( i >= (cmdLength-1) )
+	                {
+	                    done = true;
+	                }
+	            }
+	            
+	            // Parameters filled in completely - no need to wait any further
+	            if( done ) 
+	            {
+                    Controller_LedEnable(false, gpController_Led_ColorGreen);
+	                gpSched_UnscheduleEvent( Keyboard_SetupTimeout );
+	                //gpKeyboard_cbCommandIndication( gpKeyboard_Cmd.cmd, cmdLength, gpKeyboard_Cmd.params );
+		            // Indicate full command
+                	gpController_Setup_Msg(gpController_Setup_MsgId_KeyPressedIndication,cmdLength, &msg,gpKeyboard_Cmd.params);
+	            }
+				return;
+				
             }
-            else if ((ControllerOperationMode == gpController_OperationModeNormal) || (ControllerOperationMode == gpController_OperationModeIR))
+
+			//Enter Special Mode(Blink IR, SW version, Auto search.....etc)
+            else if(ControllerOperationMode == gpController_OperationModeSpecial)
+            {
+				gpController_Setup_Msg_t msg;
+			    UInt16 IRTableId;
+				UInt8 keydata;
+			    gpController_Zrc_Msg_t msgZrc;
+                Controller_KeyIndicesToKeyCodes(&(pMsg->keys), &(msgZrc.KeyPressedIndication.keys));
+                if((msgZrc.KeyPressedIndication.keys.count > 1) || (msgZrc.KeyPressedIndication.keys.count == 0))
+                {
+                    /* Generate release */
+                    msgZrc.KeyPressedIndication.keys.count = 0;
+                }
+				else
+				{
+					Controller_KeyIndicesToKeyCodes(&(pMsg->keys), &(msg.keys)) ;
+					switch(ControllerOperationSpecial)
+					{
+						case SET_BLINK_TV_IR_CODE:
+						{
+							//Setup+990 Blink IR
+							setup_cbKeyIndicationTVCode(msg.keys.codes[0]);
+							break;
+						}
+						case SET_BLINK_SW_VERSION:
+						{
+							//Setup+983 SW VERSION
+							setup_cbKeyIndicationVersion(msg.keys.codes[0]);
+							break;
+						}
+
+					}
+
+					return;
+				}
+            }
+            else if ((ControllerOperationMode == gpController_OperationModeNormal) || 
 					  (ControllerOperationMode == gpController_OperationModeIR)		||
 					  (ControllerOperationMode == gpController_OperationSetsequence))
             {
@@ -1147,7 +1388,7 @@ void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
                 validVendorID = Controller_HandleVendorID(&keys, &msgRF4CE.vendorId);
                 if(validVendorID)
                 {
-                    GP_LOG_SYSTEM_PRINTF("Valid vendor ID entered: 0x%x",0,(UInt16)msgRF4CE.vendorId);
+///                    GP_LOG_SYSTEM_PRINTF("Valid vendor ID entered: 0x%x",0,(UInt16)msgRF4CE.vendorId);
                     ControllerVendorId = msgRF4CE.vendorId;
                     gpController_Rf4ce_AttrSet(gpController_Rf4ce_MsgId_AttrVendorId,&msgRF4CE);
                     Controller_LedEnable(false,gpController_Led_ColorGreen);
@@ -1193,49 +1434,76 @@ void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
         {
             gpController_Zrc_Msg_t msgZrc;
 
-            Controller_LedEnable(false,gpController_Led_ColorGreen);
+			if(ControllerOperationMode != gpController_OperationModeSetup)
+            	Controller_LedEnable(false,gpController_Led_ColorGreen);
             msgZrc.KeyPressedIndication.keys.count = 0;
             msgZrc.KeyPressedIndication.bindingId = ControllerBindingId;
             msgZrc.KeyPressedIndication.profileId = ControllerProfileId;
             msgZrc.KeyPressedIndication.vendorId  = ControllerVendorId;
             msgZrc.KeyPressedIndication.txOptions = ControllerTxOptions;
             gpController_Zrc_Msg(gpController_Zrc_MsgId_KeyPressedIndication, &msgZrc);
-            break;
+			break;
         }
 
-        case gpController_KeyBoard_MsgId_SetupEnteredIndication:
+        case gpController_KeyBoard_MsgId_SetupEnteredIndication:	//setup key 3초후.
         {
+            Controller_LedEnable(true, gpController_Led_ColorGreen);
+            Controller_LedEnable(false, gpController_Led_ColorRed);
             /* only go to setup mode when in normal mode */
-            if(ControllerOperationMode == gpController_OperationModeNormal)
-            {
-                Controller_LedEnable(true, gpController_Led_ColorGreen);
-                Controller_LedEnable(false, gpController_Led_ColorRed);
             if(ControllerOperationMode == gpController_OperationModeNormal ||
 				ControllerOperationMode == gpController_OperationModeIR)
             {
 
                 ControllerOperationMode = gpController_OperationModeSetup;
-                gpController_Setup_Msg(gpController_Setup_MsgId_SetupEnterIndication , NULL);
+	            gpKeyboard_Cmd.cmd = gpKeyboard_CmdTypeInvalid;
+	            MEMSET( gpKeyboard_Cmd.params, 0xFE, GP_KEYBOARD_MAX_CMD_PARAM_LENGTH );
+                gpController_Setup_Msg(gpController_Setup_MsgId_SetupEnterIndication , NULL, NULL,NULL);
             }
             break;
         }
 
-        case gpController_KeyBoard_MsgId_SetupKeysPressedIndication:
+        case gpController_KeyBoard_MsgId_SetupKeysPressedIndication:	//setup key를 누르고잇는동안.
         {
-            /* only show setup key when in normal mode */
-            if(ControllerOperationMode == gpController_OperationModeNormal)
-            {
-                Controller_LedEnable(true, gpController_Led_ColorRed);
-            }
+			if(ControllerOperationMode == gpController_OperationModeSetup)
+	            gpController_KeyBoard_cbMsg(gpController_KeyBoard_MsgId_KeysReleasedIndication, NULL);
+			if(gpController_Mode == gpController_ModeIRNec)
+			{
+				/* only show setup key when in normal mode */
+	            if(ControllerOperationMode == gpController_OperationModeNormal)
+	            {
+	                Controller_LedEnable(true, gpController_Led_ColorRed);
+	            }
+			}
+			else if(gpController_Mode == gpController_ModeMSO)
+			{
+	            if(ControllerOperationMode == gpController_OperationModeNormal)
+	            {
+	                Controller_LedEnable(true, gpController_Led_ColorGreen);
+	            }
+			}
             break;
         }
 
         case gpController_KeyBoard_MsgId_SetupKeysReleasedIndication:
         {
             /* only handle setup key in normal mode */
+			//setupkey를 2초이하 press after release.
             if(ControllerOperationMode == gpController_OperationModeNormal)
             {
-              Controller_LedEnable(false, gpController_Led_ColorRed);
+				Controller_LedEnable(false, gpController_Led_ColorRed);
+                Controller_LedEnable(false, gpController_Led_ColorGreen);
+				gpSched_ScheduleEvent(300000L,LED_BatteryLow_Indicate);
+            }
+			else if(ControllerOperationMode == gpController_OperationModeSetup)
+            {
+               Controller_LedEnable(false, gpController_Led_ColorRed);
+               HAL_WAIT_MS(5);
+               Controller_LedEnable(true, gpController_Led_ColorGreen);
+            }
+            else
+            {
+				ControllerOperationMode = gpController_OperationModeNormal;
+				gpSched_ScheduleEvent(300000L,LED_BatteryLow_Indicate);
             }
             break;
         }
@@ -1261,7 +1529,7 @@ void gpController_Setup_cbMsg(  gpController_Setup_MsgId_t msgId,
         case gpController_Setup_MsgId_cbSetupLeftIndication:
         {
             Controller_LedEnable(false, gpController_Led_ColorGreen);
-            ControllerOperationMode = gpController_OperationModeNormal;
+//            ControllerOperationMode = gpController_OperationModeNormal;
             break;
         }
 
@@ -1272,6 +1540,7 @@ void gpController_Setup_cbMsg(  gpController_Setup_MsgId_t msgId,
             gpController_Led_Sequence_t *sequence = &msg.sequence;
             *sequence = Controller_LedSequenceError;
             gpController_Led_Msg( gpController_Led_MsgId_SequenceIndication, &msg);
+			GP_LOG_SYSTEM_PRINTF("SetupTimeout!!!",0);
             break;
         }
 #if defined(GP_DIVERSITY_APP_ZRC1_1) || defined(GP_DIVERSITY_APP_ZRC2_0)
@@ -1844,6 +2113,15 @@ static void controller_GetIRKeysFromDatabase( void )
 
 }
 
+
+// this function will populate the keyTransmitAction[] entries for the volume control keys
+// to indicate that vc should be sent to the TV;
+// this function will only be called when we have TV IR info
+void gpController_SetDtaMode( Bool mode )
+{
+    gpController_sendVolumeControlToDta = mode;
+    gpNvm_Backup(GP_COMPONENT_ID , NVM_TAG_SEND_VC_TO_DTA , (UInt8*)&gpController_sendVolumeControlToDta);
+}
 
 Bool gpController_SelectDeviceInDatabase( UInt16 deviceId )
 {

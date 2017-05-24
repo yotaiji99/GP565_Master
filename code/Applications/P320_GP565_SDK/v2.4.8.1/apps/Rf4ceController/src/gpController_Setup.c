@@ -38,6 +38,13 @@
 #include "gpRf4ceActionControl_CommandCodes.h"
 #include "gpLog.h"
 #include "gpAssert.h"
+#include "gpKeyboard.h"
+#include "gpController_Main.h"
+#include "gpIRDatabase.h"
+#include "gpNvm.h"
+#include "gpReset.h"
+#include "gpController_Led.h"
+#include "Hal.h"
 
 /*******************************************************************************
  *                      Defines
@@ -46,6 +53,8 @@
 #define GP_COMPONENT_ID GP_COMPONENT_ID_APP
 /** The time (in seconds) that the setup mode will remain enabled without user
     input */
+#define SETUP_SPECIAL_MODE_TIMEOUT      10000000L
+
 #define SETUP_TIMEOUT 10
 
 /* Schedule indication to relief call stack size */
@@ -74,6 +83,8 @@ static const Setup_CommandTableEntry_t commandTable[] =
     {  SETUP_CMD_FACTORY_RESET,     gpRf4ceActionControl_CommandCodePowerToggleFunction }
 };
 
+setup_Data_t         gpSetup_Data;
+
 
 /*******************************************************************************
  *                      Static Function Defines
@@ -82,25 +93,30 @@ static const Setup_CommandTableEntry_t commandTable[] =
  *
  *  This primitive triggers a timeout indication to the controller.
  */
-static void Setup_Timeout(void);
+void Setup_Timeout(void);
 
 /** @ingroup SETUP
  *
  *  This primitive handles the selection of a command based on received keys.
  */
-static void Setup_SelectCommand(gpController_Keys_t keys);
+static void Setup_SelectCommand(gpController_Keys_t keys,UInt8 paramLength,UInt8 * params);
 
 static void Setup_SendIndication(void* arg);
 /*******************************************************************************
  *                      Public Functions
  ******************************************************************************/
+gpController_cbKeyIndication_t gpController_GetKeyHandler( void )
+{
+    return gpController_cbKeyIndication;
+}
+
 void gpController_Setup_Init(void)
 {
     GP_LOG_PRINTF("Setup Initialized", 0);
 }
 
-void gpController_Setup_Msg(gpController_Setup_MsgId_t msgId,
-                            gpController_Setup_Msg_t *pMsg)
+void gpController_Setup_Msg(gpController_Setup_MsgId_t msgId, UInt8 paramLength,
+                            gpController_Setup_Msg_t *pMsg,UInt8 * params)
 {
     switch(msgId)
     {
@@ -112,7 +128,7 @@ void gpController_Setup_Msg(gpController_Setup_MsgId_t msgId,
         }
         case gpController_Setup_MsgId_KeyPressedIndication:
         {
-            Setup_SelectCommand(pMsg->keys);
+            Setup_SelectCommand(pMsg->keys,paramLength,params);
             break;
         }
         case gpController_Setup_MsgId_KeyReleasedIndication:
@@ -132,10 +148,22 @@ void gpController_Setup_Msg(gpController_Setup_MsgId_t msgId,
 /*******************************************************************************
  *                      Static Functions
  ******************************************************************************/
-static void Setup_Timeout( void )
+void Setup_Timeout( void )
 {
     gpController_Setup_cbMsg(gpController_Setup_MsgId_cbSetupTimeoutIndication, NULL);
     gpController_Setup_cbMsg(gpController_Setup_MsgId_cbSetupLeftIndication, NULL);
+	ControllerOperationMode = gpController_OperationModeNormal;
+}
+
+void Setup_Timeout_without_setno( void )
+{
+    gpController_Setup_cbMsg(gpController_Setup_MsgId_cbSetupTimeoutIndication, NULL);
+    gpController_Setup_cbMsg(gpController_Setup_MsgId_cbSetupLeftIndication, NULL);
+	ControllerOperationMode = gpController_OperationModeNormal;
+    // if IR hunt failed, restore programmable keys to previous values and restore IrTableId.
+    gpController_SelectDeviceInDatabase( gpSetup_TvHunt.backupActiveIRTableId );
+	//gpSetup_TvHunt.lastAttemptedTvCode=gpSetup_TvHunt.backupActiveIRTableId;
+	//gpSetup_TvHunt.currentSearchIndex=gpSetup_TvHunt.backupActiveIRTableId;
 }
 
 static void Setup_SelectSetupCommand(UInt8 key, Setup_CommandId_t *cmd)
@@ -152,8 +180,115 @@ static void Setup_SelectSetupCommand(UInt8 key, Setup_CommandId_t *cmd)
     }
 }
 
-static void Setup_SelectCommand(gpController_Keys_t keys)
+static UInt16 setup_ParseNumber( UInt8 * params, UInt8 ndigits )
 {
+    UInt16 n=0;
+    UInt8 i;
+    for( i=0; i<ndigits; i++ )
+    {
+        UInt8 digit= params[i];
+        n*=10;
+        if( digit > gpKeyboard_LogicalId_Number9 )
+            return 0xFFFF;
+        if( digit < gpKeyboard_LogicalId_Number0 )
+            return 0xFFFF;
+        n += params[i] - gpKeyboard_LogicalId_Number0;        
+    }
+    return n;
+}
+
+
+gpSetup_Command_t setup_TranslateKeyCombination( UInt8 paramLength, UInt8 * params )
+{
+    switch( params[0] )
+    {
+        // <<SETUP>><MENU> - MSO binding
+        case gpKeyboard_LogicalId_RootMenu:
+        {
+            return SETUP_CMD_MSO_BIND;
+        }
+        // <<SETUP>><1> - command code to enter the TV brand number
+        case gpKeyboard_LogicalId_Number1:
+        {
+            return IR_TV_SETUP;
+        }
+        // <<SETUP>><B> - blink battery status
+        case gpKeyboard_LogicalId_F1Blue:
+        {
+            return BLINK_BATTERY_STATUS;
+        }
+        // <<SETUP>><Vol-> - send Volume Control to DTA
+        case gpKeyboard_LogicalId_VolumeDown:
+        {
+            return SEND_VC_TO_DTA;
+        }
+        // <<SETUP>><Vol+> - send Volume Control to TV
+        case gpKeyboard_LogicalId_VolumeUp:
+        {
+            return SEND_VC_TO_TV;
+        }
+        // <<SETUP>><9xx> - several commands
+        case gpKeyboard_LogicalId_Number9:
+        {
+            switch( params[1] )
+            {
+                case gpKeyboard_LogicalId_Number8:
+                {
+                    switch( params[2] )
+                    {
+                        // <<SETUP>><9><8><1> factory reset
+                        case gpKeyboard_LogicalId_Number1:
+                            return SETUP_CMD_FACTORY_RESET;
+                        // <<SETUP>><9><8><3> blink SW version
+                        case gpKeyboard_LogicalId_Number3:
+                            return BLINK_SW_VERSION;
+                        // <<SETUP>><9><8><6> reset TV IR Code
+                        case gpKeyboard_LogicalId_Number6:
+                            return SETUP_CMD_UNPAIR_IR;
+                        // <<SETUP>><9><8><7> 
+                        case gpKeyboard_LogicalId_Number7:
+                            return SETUP_CMD_UNBIND;
+                    	}
+                }
+                case gpKeyboard_LogicalId_Number9:
+                {
+                    switch( params[2] )
+                    {
+                        // <<SETUP>><9><9><0>  blink IR selection
+                        case gpKeyboard_LogicalId_Number0:
+                            return BLINK_TV_IR_CODE;
+                    }   // end switch( params[2] )
+                }
+               
+            }
+            return INVALID_SETUP_COMMAND;
+        }
+        default:
+        {
+            return INVALID_SETUP_COMMAND;
+        }
+    }
+
+}
+
+
+
+void LED_SetOk_Control_Factory(void)
+{
+    gpController_Led_SetLed(true,gpController_Led_ColorGreen);
+    HAL_WAIT_MS(200);
+    gpController_Led_SetLed(false,gpController_Led_ColorGreen);
+    HAL_WAIT_MS(100);
+    gpController_Led_SetLed(true,gpController_Led_ColorGreen);
+    HAL_WAIT_MS(200);
+    gpController_Led_SetLed(false,gpController_Led_ColorGreen);
+}
+
+
+static void Setup_SelectCommand(gpController_Keys_t keys, UInt8 paramLength,UInt8 * params )
+{
+    volatile UInt16 deviceID=0;
+    volatile UInt16 activeDeviceId=0;
 
     /* setup commands only support 1 key */
     if (keys.count > 1)
@@ -163,16 +298,16 @@ static void Setup_SelectCommand(gpController_Keys_t keys)
 
     if (keys.count == 1)
     {
-        Setup_CommandId_t command = SETUP_CMD_INVALID;
-        Setup_SelectSetupCommand(keys.codes[0], &command);
-
-        switch(command)
+///        Setup_CommandId_t command = SETUP_CMD_INVALID;
+///        Setup_SelectSetupCommand(keys.codes[0], &command);
+        switch(setup_TranslateKeyCombination( paramLength, params ))
         {
 #if defined(GP_DIVERSITY_APP_ZRC1_1) || defined(GP_DIVERSITY_APP_ZRC2_0)
             case SETUP_CMD_ZRC_BIND:
             {
                 gpSched_UnscheduleEvent(Setup_Timeout);
                 SETUP_INDICATION(gpController_Setup_MsgId_cbSetupLeftIndication);
+	            ControllerOperationMode = gpController_OperationModeNormal;
                 SETUP_INDICATION(gpController_Setup_MsgId_cbZrc_BindStartIndication);
                 break;
             }
@@ -183,6 +318,7 @@ static void Setup_SelectCommand(gpController_Keys_t keys)
                 gpSched_UnscheduleEvent(Setup_Timeout);
                 /* Order is important here for main state machine. */
                 SETUP_INDICATION(gpController_Setup_MsgId_cbSetupLeftIndication);
+	            ControllerOperationMode = gpController_OperationModeNormal;
                 SETUP_INDICATION(gpController_Setup_MsgId_cbMsoBindStartIndication);
                 break;
             }
@@ -193,15 +329,41 @@ static void Setup_SelectCommand(gpController_Keys_t keys)
                 gpSched_UnscheduleEvent(Setup_Timeout);
                 /* Order is important here for main state machine. */
                 SETUP_INDICATION(gpController_Setup_MsgId_cbSetupLeftIndication);
+	            //ControllerOperationMode = gpController_OperationModeNormal;
+	            ControllerOperationMode = gpController_OperationSetsequence;
                 SETUP_INDICATION(gpController_Setup_MsgId_cbUnbindStartIndication);
+				gpSched_ScheduleEvent( 100000L, LED_SetOk_Control);
+                break;
+            }
+
+            case SETUP_CMD_UNPAIR_IR:
+            {
+
+				gpController_Mode=gpController_ModeIRNec;
+                gpSched_UnscheduleEvent(Setup_Timeout);
+	            //ControllerOperationMode = gpController_OperationModeNormal;
+	            ControllerOperationMode = gpController_OperationSetsequence;
+                SETUP_INDICATION(gpController_Setup_MsgId_cbSetupLeftIndication);
+				gpIRDatabase_Unpair();
+				gpSched_ScheduleEvent( 1000000L, LED_SetOk_Control);
                 break;
             }
 
             case SETUP_CMD_FACTORY_RESET:
             {
+				gpController_Mode=gpController_ModeIRNec;
                 gpSched_UnscheduleEvent(Setup_Timeout);
                 SETUP_INDICATION(gpController_Setup_MsgId_cbSetupLeftIndication);
+	            //ControllerOperationMode = gpController_OperationModeNormal;
+	            ControllerOperationMode = gpController_OperationSetsequence;
                 SETUP_INDICATION(gpController_Setup_MsgId_cbFactoryResetIndication);
+				HAL_WDT_RESET();
+				HAL_WAIT_MS(500);
+				HAL_WDT_RESET();
+				HAL_WAIT_MS(500);
+	            gpNvm_ClearNvm();
+				LED_SetOk_Control_Factory();
+	            gpReset_ResetSystem( );
                 break;
             }
 
@@ -209,7 +371,10 @@ static void Setup_SelectCommand(gpController_Keys_t keys)
             {
                 gpSched_UnscheduleEvent(Setup_Timeout);
                 SETUP_INDICATION(gpController_Setup_MsgId_cbSetupLeftIndication);
+	            //ControllerOperationMode = gpController_OperationModeNormal;
+	            ControllerOperationMode = gpController_OperationSetsequence;
                 SETUP_INDICATION(gpController_Setup_MsgId_cbInvalidCommandIndication);
+				gpSched_ScheduleEvent( 500000L, LED_SetError_Control );
                 break;
             }
 
@@ -217,11 +382,104 @@ static void Setup_SelectCommand(gpController_Keys_t keys)
             {
                 gpSched_UnscheduleEvent(Setup_Timeout);
                 SETUP_INDICATION(gpController_Setup_MsgId_cbSetupLeftIndication);
+	            //ControllerOperationMode = gpController_OperationModeNormal;
+	            ControllerOperationMode = gpController_OperationSetsequence;
                 SETUP_INDICATION(gpController_Setup_MsgId_cbSetVendorID);
                 break;
             }
 
-            default:
+	        case IR_TV_SETUP:
+	        {
+                gpSched_UnscheduleEvent(Setup_Timeout);
+                SETUP_INDICATION(gpController_Setup_MsgId_cbSetupLeftIndication);
+	            //ControllerOperationMode = gpController_OperationModeNormal;
+	            ControllerOperationMode = gpController_OperationSetsequence;
+	            if( paramLength != 5 )
+	            {
+	                goto fail;
+	            }
+	            deviceID = setup_ParseNumber( &params[1], 4 );
+	            if( deviceID == 0xFFFF )
+	            {
+	                goto fail;
+	            }
+	            // device entries for this remote are 10000 based, so add again
+	            //deviceID += 10000;
+
+	            activeDeviceId = gpIRDatabase_GetIRTableId();
+	            if( !gpController_SelectDeviceInDatabase( deviceID ) )
+	            {
+	                gpController_SelectDeviceInDatabase( activeDeviceId );
+                    GP_LOG_SYSTEM_PRINTF("Setup fail!!!,",0);
+					gpSched_ScheduleEvent( 1000000L, LED_SetError_Control );
+	                goto fail;
+	            }
+	            // also make sure the controller 'knows' to send volume control to the TV
+	            gpController_SetDtaMode( false );            
+                GP_LOG_SYSTEM_PRINTF("Setup Complete!!!,",0);
+				gpSched_ScheduleEvent( 1000000L, LED_SetOk_Control);
+	            break;
+	        }
+
+	        case BLINK_TV_IR_CODE:	//setupEA special mode¡¤I A©ªAO.
+	        {
+                gpSched_UnscheduleEvent(Setup_Timeout);
+                SETUP_INDICATION(gpController_Setup_MsgId_cbSetupLeftIndication);
+				ControllerOperationMode = gpController_OperationModeSpecial;
+	            gpSetup_Data.expectedButton = gpKeyboard_LogicalId_Number1;
+				gpSched_ScheduleEvent( 0, LED_SetOk_Control);;
+				ControllerOperationSpecial = SET_BLINK_TV_IR_CODE;
+	            break;
+	        }
+	        case BLINK_SW_VERSION:	//setupEA special mode¡¤I A©ªAO.
+	        {
+                gpSched_UnscheduleEvent(Setup_Timeout);
+                SETUP_INDICATION(gpController_Setup_MsgId_cbSetupLeftIndication);
+				ControllerOperationMode = gpController_OperationModeSpecial;
+	            gpSetup_Data.expectedButton = gpKeyboard_LogicalId_Number1;
+				gpSched_ScheduleEvent( 100000L, LED_SetOk_Control);
+				ControllerOperationSpecial = SET_BLINK_SW_VERSION;
+	            break;
+	        }
+	        case SEND_VC_TO_DTA:
+	        {
+                gpSched_UnscheduleEvent(Setup_Timeout);
+                SETUP_INDICATION(gpController_Setup_MsgId_cbSetupLeftIndication);
+	            //ControllerOperationMode = gpController_OperationModeNormal;
+	            ControllerOperationMode = gpController_OperationSetsequence;
+	            if( paramLength != 1 )
+	            {
+	                goto fail;
+	            }
+	            gpController_SetDtaMode( true );
+				gpSched_ScheduleEvent( 500000L, LED_SetOk_Control);
+				//LED_SetOk_Control_Factory();
+				break;
+	        }
+	        case SEND_VC_TO_TV:
+	        {
+                gpSched_UnscheduleEvent(Setup_Timeout);
+                SETUP_INDICATION(gpController_Setup_MsgId_cbSetupLeftIndication);
+	            //ControllerOperationMode = gpController_OperationModeNormal;
+	            ControllerOperationMode = gpController_OperationSetsequence;
+	            if( paramLength != 1 )
+	            {
+	                goto fail;
+	            }
+	            // only when we have a valid IR selection should we enable VC to TV
+	            if( 0xFFFF != gpIRDatabase_GetIRTableId() )
+	            {
+	                gpController_SetDtaMode( false );
+	            }
+	            //else
+	            //{
+	            //    goto fail;
+	            //}
+				gpSched_ScheduleEvent( 500000L, LED_SetOk_Control);
+				//LED_SetOk_Control_Factory();
+	            break;
+	        }
+			default:
             {
                 /* Unknown command ID. */
                 GP_ASSERT_DEV_EXT(false);
@@ -229,6 +487,9 @@ static void Setup_SelectCommand(gpController_Keys_t keys)
             }
         }
     }
+	fail:
+    return;
+		
 }
 
 static void Setup_SendIndication(void* arg)

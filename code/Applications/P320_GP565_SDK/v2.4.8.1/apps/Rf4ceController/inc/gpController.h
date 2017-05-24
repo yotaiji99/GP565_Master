@@ -111,6 +111,12 @@ typedef struct gpController_Keys
 *   @brief  The gpControllerOperationMode_t type defines several controller
 *           operation modes.
 */
+#define gpController_OperationModeSpecial       0x07
+
+#define gpController_OperationDoublekey         0x08
+
+#define gpController_OperationSetsequence       0x09
+
 typedef UInt8 gpControllerOperationMode_t;
 //@}
 #endif /* _GPCONTROLLER_LED_H_ */
