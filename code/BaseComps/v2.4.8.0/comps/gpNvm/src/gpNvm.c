@@ -561,7 +561,9 @@ void gpNvm_Dump(UInt8 componentId, UInt8 tagId)
         {
             GP_LOG_SYSTEM_PRINTF("TAG[0x%x:%i] - (S%i)",6,(UInt16)componentId,(UInt16)tagId,(UInt16)pTag->size);
         }
+#ifdef GP_DIVERSITY_LOG
         gpLog_Flush();
+#endif
         while(printed < pTag->size)
         {
             switch(pTag->size-printed)
@@ -604,10 +606,14 @@ void gpNvm_Dump(UInt8 componentId, UInt8 tagId)
                     break;
             }
             printed += 8;
+#ifdef GP_DIVERSITY_LOG
             gpLog_Flush();
+#endif
         }
 
+#ifdef GP_DIVERSITY_LOG
         gpLog_Flush();
+#endif
     }
 }
 #endif //GP_NVM_DIVERSITY_MAX_DUMP_SIZE

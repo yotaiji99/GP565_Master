@@ -58,6 +58,7 @@
 
 #include "gpIrTx.h"
 #include "gpIrDatabase.h"
+#include "gpNvm.h"
 #include "gpReset.h"
 #include "Hal.h"
 
@@ -89,6 +90,12 @@
 #define APP_NUMBER_OF_TV_KEYS                           5
 #define APP_REGULAR_KEY_NUMBER_OF_KEYS                  29+2
 #define APP_TOTAL_NUMBER_OF_KEYS                        APP_REGULAR_KEY_NUMBER_OF_KEYS + APP_NUMBER_OF_VOLUME_KEYS + APP_NUMBER_OF_TV_KEYS
+
+#define NVM_TAG_CONTROLLER_MODE         0
+#define NVM_TAG_SHORT_RF_RETRIES_PERIOD 1
+#define NVM_TAG_SEND_VC_TO_DTA          2
+#define NVM_TAG_VENDOR_ID               3
+#define NVM_TAG_TX_COUNTER              4
 #define SETUP_INVALID_INDEX             0xFFFF
 #define SETUP_INVALID_TV_CODE           0xFFFF
 #define APP_TV_IR_POWEROFF_INDEX            0
@@ -1819,7 +1826,7 @@ static void App_DoReset(void)
     {
 		Controller_SetDeviceId(restoredDeviceId);
     }
-    gpNvm_Restore(GP_COMPONENT_ID , NVM_TAG_SEND_VC_TO_DTA , (UInt8*)&gpController_sendVolumeControlToDta);
+    gpNvm_Restore(GP_COMPONENT_ID , NVM_TAG_SEND_VC_TO_DTA , (UInt8*)&gpController_sendVolumeControlToDta);	//
     gpController_PendingKey.pendingKeyInfo.keyInfo = 0xff;
     gpSched_ScheduleEvent( 0, gpController_CheckBatteryLevel);
 }
@@ -2239,7 +2246,7 @@ static void controller_GetIRKeysFromDatabase( void )
 void gpController_SetDtaMode( Bool mode )
 {
     gpController_sendVolumeControlToDta = mode;
-    gpNvm_Backup(GP_COMPONENT_ID , NVM_TAG_SEND_VC_TO_DTA , (UInt8*)&gpController_sendVolumeControlToDta);
+    gpNvm_Backup(GP_COMPONENT_ID , NVM_TAG_SEND_VC_TO_DTA , (UInt8*)&gpController_sendVolumeControlToDta);	//
 }
 
 Bool gpController_SelectDeviceInDatabase( UInt16 deviceId )

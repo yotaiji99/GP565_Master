@@ -592,7 +592,9 @@ static void Nvm_FlashCollectPageInfo(void)
             GP_LOG_SYSTEM_PRINTF("Flash p:%d/%d vp:%d c:%d l:%d r:%d crc:%d",0, physicalPage, NVM_NUMBER_PAGES, memoryRangeSpecifier - 1, NVM_PAGE_COUNTER_WITHOUT_LINK(pageCounter),IS_NVM_PAGE_COUNTER_LINK_ENABLED(pageCounter),
                 nvmFlashGlobal.nvmFlashBootVariables.memoryRangeInfo[nvmFlashGlobal.nvmFlashBootVariables.pageInfoSummary[physicalPage].virtualPage].refCounter,
                 crc );
+#ifdef GP_DIVERSITY_LOG
             gpLog_Flush();
+#endif
         }
     }
 }
