@@ -32,6 +32,7 @@
 /*******************************************************************************
  *                    Include Files
  ******************************************************************************/
+#include "gpController_Main.h"
 #include "gpController_Led.h"
 #include "gpController_Rf4ce.h"
 #include "gpController_Zrc.h"
@@ -55,18 +56,33 @@
 #include "gpPoolMem.h"
 #include "gpRf4ceActionControl_CommandCodes.h"
 
+#include "gpIrTx.h"
+#include "gpIrDatabase.h"
+#include "gpReset.h"
+#include "Hal.h"
 /*******************************************************************************
  *                    Defines
  ******************************************************************************/
 /** The component ID (logging) */
 #define GP_COMPONENT_ID GP_COMPONENT_ID_APP
+#define GP_PROGRAMMABLE_KEY_NUMBER_OF_KEYS           6  /* The keyboard support 4 IR keys{Power toggle, Vol up, Vol down, Mute} */
+#ifdef GP_DIVERSITY_XSIF_DEBUG_ENABLED
+#define GP_DEFAULT_DEVICE_ID                        	1
+#else
+#define GP_DEFAULT_DEVICE_ID                        	136
+#endif
+#define GP_PROGKEY_IRCODE_TXDEFINITION(code)        (gpIrTx_TransmissionDefinition_t*)((code))
+#define GP_PROGKEY_IRCODE_TXTIMINGDATA(code)        (gpIrTx_TransmissionTimingData_t*)((code)+8)
+#define APP_TV_IR_DATA_AVAILABLE                        0x01
 
 
+#define SETUP_INVALID_INDEX             0xFFFF
+#define SETUP_INVALID_TV_CODE           0xFFFF
 /*******************************************************************************
  *                    Static Data Definitions
  ******************************************************************************/
 /* Controller operation mode */
-static gpControllerOperationMode_t ControllerOperationMode = gpController_OperationModeNormal;
+UInt8 ControllerOperationMode = gpController_OperationModeNormal;
 /* Default binding ID */
 static UInt8 ControllerBindingId = 0xFF;
 static UInt8 ControllerProfileId = 0xFF;
@@ -74,10 +90,50 @@ static UInt16 ControllerTxOptions = 0;
 static UInt16 ControllerVendorId  = GP_RF4CE_NWKC_VENDOR_IDENTIFIER;
 static Bool ControllerKeyPressConfirmPending = false;
 
+
+
+const UInt8 controller_TvIrKey_LogicalKeyId[] = {
+        gpKeyboard_LogicalId_PowerToggleFunction,
+        gpKeyboard_LogicalId_PowerToggleFunction ,
+        gpKeyboard_LogicalId_VolumeUp        ,
+        gpKeyboard_LogicalId_VolumeDown      ,
+        gpKeyboard_LogicalId_Mute            ,
+        gpKeyboard_LogicalId_InputSelect	 ,
+    };
+
+
 #ifdef GP_RF4CEVOICE_DIVERSITY_ORIGINATOR
 static Bool audioActive = false;
 #endif
 
+typedef struct gpProgrammableKey_TvIrDesc_s
+{
+    UInt8                           code[GP_PROGKEY_MAX_IRCODE_SIZE];
+} gpProgrammableKey_TvIrDesc_t;
+
+typedef struct 
+	gpKeyboard_Command {
+    gpKeyboard_CmdType_t cmd;
+    UInt8 params[GP_KEYBOARD_MAX_CMD_PARAM_LENGTH];
+} gpKeyboard_Command_t;
+
+typedef struct ProgrammableKey_KeyDesc_s{
+    UInt8                               keyConfig;
+    gpProgrammableKey_TvIrDesc_t        tvIrDesc;
+} ProgrammableKey_KeyDesc_t;
+
+typedef struct gpKeyVendorIdCode {
+    UInt8 gpKeyCodeMap;
+    UInt8 gpKeyVendorIDCode;
+} gpKeyVendorIdCode_t;
+
+
+ProgrammableKey_KeyDesc_t gpProgrammableKey_Db[GP_PROGRAMMABLE_KEY_NUMBER_OF_KEYS];
+controller_KeyDesc_t controller_TvIrKey_Db[APP_NUMBER_OF_TV_IR_KEYS];
+UInt8 keyTransmitAction[ APP_TOTAL_NUMBER_OF_KEYS ];
+UInt16 gpDeviceID = 0xFFFF;             // default device id
+gpController_Mode_t             gpController_Mode=gpController_ModeIRNec;                  //current controller application mode
+UInt8 gpStatus_RIBData[11];
 /* keyboard mapping needs to match gpController_KeyBoard module. */
 static const UInt8 ROM gpKeyCodeMap[] FLASH_PROGMEM =
 {
@@ -190,6 +246,7 @@ static void gpController_BindFailure(gpRf4ce_Result_t status);
 #ifdef GP_DIVERSITY_APP_ZID
 static void gpController_Zid_ReportConfirm(gpRf4ce_Result_t status);
 #endif /* GP_DIVERSITY_APP_ZID */
+static void App_DoReset(void);
 
 /*******************************************************************************
  *                    Helper functions
@@ -198,6 +255,7 @@ static void gpController_Zid_ReportConfirm(gpRf4ce_Result_t status);
  {
     return ControllerBindingId;
  }
+
 /*******************************************************************************
  *                    ZRC 2.0 and 1.1 Callback Functions
  ******************************************************************************/
@@ -254,6 +312,7 @@ void gpController_Zrc_cbMsg(gpController_Zrc_MsgId_t msgId,
             if(pMsg->UnbindConfirmParams.status == gpRf4ce_ResultSuccess)
             {
                 Controller_LedIndication(&Controller_LedSequenceSuccess);
+				gpController_Mode=gpController_ModeIRNec;
             }
             else
             {
@@ -670,6 +729,191 @@ Bool Controller_HandleAudioKeys(gpController_Zrc_Msg_t *pZrc)
 }
 #endif /*GP_RF4CEVOICE_DIVERSITY_ORIGINATOR*/
 
+	static UInt16 controller_GetRegularKeyCode( UInt8 modeIndex, UInt8 *keyIndex )
+{
+    UIntLoop i=0;
+	UInt16 tmp=0;
+	
+
+	
+    for(i=0;i<(sizeof(gpKeyVendorIdMap)/sizeof(gpKeyVendorIdCode_t));i++)
+    {
+        if(i == *keyIndex)
+        {
+            tmp = (UInt16)gpKeyVendorIdMap[i].gpKeyVendorIDCode;
+//			tmp<<=8;
+//            tmp |= (UInt16)gpKeyVendorIdMap[i].gpKeyVendorIDCode2;
+           break;
+        }
+    }
+
+    return tmp;
+}
+
+Bool Controller_HandleIRKeys(gpController_Zrc_Msg_t *pZrc,gpController_KeyBoard_Msg_t *pMsg)
+{
+
+    gpController_Zrc_Msg_t msgZrc;
+	UInt8 Tmp_keycode;
+    UInt8* IRCode = NULL;
+    gpController_IR_Msg_t msg;
+    gpProgrammableKey_TvIrDesc_t* pDesc;
+    if((pZrc->KeyPressedIndication.keys.count == 0))
+    {
+			ControllerOperationMode = gpController_OperationModeNormal;
+        if(ControllerOperationMode == gpController_OperationModeIR)
+        {
+            ControllerOperationMode = gpController_OperationModeNormal;
+            return true;
+        }
+		return false;
+    }
+    if(pZrc->KeyPressedIndication.keys.count > 1)
+    {
+    	//pZrc->KeyPressedIndication.keys.count = 0;
+        if(ControllerOperationMode == gpController_OperationModeIR)
+        {
+            ControllerOperationMode = gpController_OperationModeNormal;
+            return true;
+        }
+        else
+        {
+            ControllerOperationMode = gpController_OperationModeNormal;
+            return false;
+        }
+    }
+
+//power,input은 모두 TV로 출력.
+	if((pZrc->KeyPressedIndication.keys.codes[0]==gpRf4ceActionControl_CommandCodePowerToggleFunction)
+	 ||(pZrc->KeyPressedIndication.keys.codes[0]==gpRf4ceActionControl_CommandCodeInputSelect))
+	{
+        Controller_KeyIndicesToKeyCodes(&(pMsg->keys), &(msg.keys));
+        switch(pZrc->KeyPressedIndication.keys.codes[0])
+        {
+            case gpRf4ceActionControl_CommandCodePowerToggleFunction:
+            {
+				if(PowerToggle&0x01)
+				{
+                    pDesc = &(gpProgrammableKey_Db[0].tvIrDesc);
+					PowerToggle++;
+				}
+				else
+				{
+                    pDesc = &(gpProgrammableKey_Db[1].tvIrDesc);
+					PowerToggle++;
+				}
+                break;
+            }
+			
+            case gpRf4ceActionControl_CommandCodeInputSelect:
+            {
+                pDesc = &(gpProgrammableKey_Db[5].tvIrDesc);
+                break;
+            }
+            default:
+            {
+                return;
+                break;
+            }
+        } // end switch
+			///pDesc = &(gpProgrammableKey_Db[pMsg->keys.indices[0]].tvIrDesc.code);
+	    ControllerOperationMode = gpController_OperationModeIR;
+		if((pDesc->code[0]!=0xFF) && (pDesc->code[0]!=0x00) )
+		{
+			Controller_LedEnable(true,gpController_Led_ColorRed);
+    		gpIrTx_SendCommandRequestGeneric((gpIrTx_TvIrDesc_t*)pDesc->code, false, 0/*irTxConfig*/);
+		}
+       return true;
+	}
+	
+//vol+/-, mute는 tv설정이 없으면 STB,설정이되면 TV
+	else if((pZrc->KeyPressedIndication.keys.codes[0]==gpRf4ceActionControl_CommandCodeVolumeUp)
+	 	   ||(pZrc->KeyPressedIndication.keys.codes[0]==gpRf4ceActionControl_CommandCodeVolumeDown)
+	 	   ||(pZrc->KeyPressedIndication.keys.codes[0]==gpRf4ceActionControl_CommandCodeMute))
+	{
+        Controller_KeyIndicesToKeyCodes(&(pMsg->keys), &(msg.keys));
+        switch(pZrc->KeyPressedIndication.keys.codes[0])
+        {
+            case gpRf4ceActionControl_CommandCodeVolumeUp:
+            {
+                pDesc = &(gpProgrammableKey_Db[2].tvIrDesc);
+                break;
+            }
+            case gpRf4ceActionControl_CommandCodeVolumeDown:
+            {
+                pDesc = &(gpProgrammableKey_Db[3].tvIrDesc);
+                break;
+            }
+            case gpRf4ceActionControl_CommandCodeMute:
+            {
+                pDesc = &(gpProgrammableKey_Db[4].tvIrDesc);
+                break;
+            }
+            default:
+            {
+                return;
+                break;
+            }
+		}
+		if(ControllerBindingId == 0xff)
+		{
+
+			if(0xFFFF!= gpIRDatabase_GetIRTableId())//default상태에서는 STB로 출력.
+			{
+				Controller_LedEnable(true,gpController_Led_ColorRed);
+				if(!gpController_sendVolumeControlToDta)	//TV Vol
+				{
+				    ControllerOperationMode = gpController_OperationModeIR;
+		        	gpIrTx_SendCommandRequestGeneric((gpIrTx_TvIrDesc_t*)pDesc->code, false, 0/*irTxConfig*/);
+	           		return true;
+				}
+				else	//DTA
+				{
+			        gpIrTx_Config_t config;
+			        gpIrTx_Config_Nec_t necConfig = { 0xAF,0, 0x60};
+
+					ControllerOperationMode = gpController_OperationModeIR;
+			        config.spec.nec = necConfig;
+			        config.function         = (gpIrTx_CommandCode_t)controller_GetRegularKeyCode( 1, &(pMsg->keys.indices[0]));
+			        config.repeated         = true;
+					config.numberMinRepeats = 0;
+			        gpIrTx_SendCommandRequestPredefined( gpIrTx_IrComponent_Nec, config );
+			        return true;
+				}
+			}
+		}
+		else if(!gpController_sendVolumeControlToDta)//paired
+		{
+		    ControllerOperationMode = gpController_OperationModeIR;
+			Controller_LedEnable(true,gpController_Led_ColorRed);
+	       	gpIrTx_SendCommandRequestGeneric((gpIrTx_TvIrDesc_t*)pDesc->code, false, 0/*irTxConfig*/);
+       		return true;
+		}
+		else
+        	return false;
+	}
+
+///other keys out	
+	if((ControllerBindingId == 0xff) && (multipleKeysPressed == 0))
+	{
+        gpIrTx_Config_t config;
+        gpIrTx_Config_Nec_t necConfig = { 0xAF,0, 0x60};
+
+		Controller_LedEnable(true,gpController_Led_ColorRed);
+		ControllerOperationMode = gpController_OperationModeIR;
+        config.spec.nec = necConfig;
+        config.function         = (gpIrTx_CommandCode_t)controller_GetRegularKeyCode( 1, &(pMsg->keys.indices[0]));
+        config.repeated         = true;
+		config.numberMinRepeats = 0;
+        gpIrTx_SendCommandRequestPredefined( gpIrTx_IrComponent_Nec, config );
+        return true;
+	}
+
+	else
+        return false;
+}
+
+
 
 void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
                                     gpController_KeyBoard_Msg_t *pMsg)
@@ -688,8 +932,13 @@ void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
                 gpController_Setup_Msg(gpController_Setup_MsgId_KeyPressedIndication, &msg);
             }
             else if ((ControllerOperationMode == gpController_OperationModeNormal) || (ControllerOperationMode == gpController_OperationModeIR))
+					  (ControllerOperationMode == gpController_OperationModeIR)		||
+					  (ControllerOperationMode == gpController_OperationSetsequence))
             {
                 gpController_Zrc_Msg_t msgZrc;
+				gpController_KeyBoard_Msg_t tmpKeycnt=*pMsg;
+				UInt8 	i;
+				UInt8 	TxBuffer[1];
                 Controller_KeyIndicesToKeyCodes(&(pMsg->keys), &(msgZrc.KeyPressedIndication.keys));
 
 #ifdef GP_DIVERSITY_APP_ZID
@@ -705,7 +954,10 @@ void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
                     return;
                 }
 #endif /*GP_RF4CEVOICE_DIVERSITY_ORIGINATOR*/
-
+                if(Controller_HandleIRKeys(&msgZrc,&tmpKeycnt))
+                {
+                    return;
+                }
 
                 if( (ControllerProfileId == gpRf4ce_ProfileIdZrc) ||
                     (ControllerProfileId == gpRf4ce_ProfileIdMso))
@@ -955,6 +1207,71 @@ void gpController_Voice_cbMsg(  gpController_Voice_MsgId_t msgId,
     }
 }
 #endif
+static Bool Controller_SelectDeviceInEmbeddedDatabase( UInt16 deviceId )
+{
+    Bool retVal = false;
+    
+    gpIRDatabase_SetIRTableId( deviceId );
+
+    if( deviceId == gpIRDatabase_GetIRTableId() )
+    {
+        // make sure we keep in synch
+        gpDeviceID = deviceId;
+        retVal = true;
+    }
+    return retVal;
+}
+
+static Bool Controller_SetDeviceId(UInt16 deviceID)
+{
+    //UInt8 nProgrammableKeys;
+///    GP_LOG_PRINTF( "=> set device %i", 0, deviceID );
+    if( Controller_SelectDeviceInEmbeddedDatabase(deviceID) )
+    {
+         UInt8 i, keyId;
+         if( 0xFFFF != gpIRDatabase_GetIRTableId() )
+         {
+            /* Device is set in the database */
+            for( i=0; i<GP_PROGRAMMABLE_KEY_NUMBER_OF_KEYS; i++ )
+            {
+                keyId = gpProgrammableKey_LogicalKeyId[i];
+                // Get the IR code of the key from the IR database. For a valid key the IR code length is greater than zero.
+                if( 0 < gpIRDatabase_GetIRCode(keyId, gpProgrammableKey_Db[i].tvIrDesc.code) )
+                {
+                    gpProgrammableKey_TvIrDesc_t* pDesc;
+                    pDesc = &gpProgrammableKey_Db[i].tvIrDesc;
+                    gpIrTx_CorrectTimingGeneric(GP_PROGKEY_IRCODE_TXDEFINITION( pDesc->code )  );
+                }
+            }
+        }
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+
+}
+
+static void App_DoReset(void)
+{
+    UInt16 restoredDeviceId;
+    gpIRDatabase_Reset();
+    restoredDeviceId = gpIRDatabase_GetIRTableId();
+   
+    if(restoredDeviceId == 0xffff)
+    {
+        // set default id
+        Controller_SetDeviceId(GP_DEFAULT_DEVICE_ID);
+    }
+    else
+    {
+		Controller_SetDeviceId(restoredDeviceId);
+    }
+    gpNvm_Restore(GP_COMPONENT_ID , NVM_TAG_SEND_VC_TO_DTA , (UInt8*)&gpController_sendVolumeControlToDta);
+    gpController_PendingKey.pendingKeyInfo.keyInfo = 0xff;
+    gpSched_ScheduleEvent( 0, gpController_CheckBatteryLevel);
+}
 
 /*******************************************************************************
  *                    Application Main
@@ -962,14 +1279,17 @@ void gpController_Voice_cbMsg(  gpController_Voice_MsgId_t msgId,
 void Application_Init( void )
 {
     /* Initialize all modules. */
+    gpBaseComps_StackInit();
     gpController_Rf4ce_Init();
     gpController_Zrc_Init();
 
 #ifdef GP_DIVERSITY_APP_ZID
     gpController_Zid_Init();
 #endif
+    gpIRDatabase_Init();
 
     gpController_KeyBoard_Init();
+	gpSched_ScheduleEvent(0, App_DoReset);
     gpController_Led_Init();
     gpController_Setup_Init();
 #ifdef GP_RF4CEVOICE_DIVERSITY_ORIGINATOR
@@ -1218,6 +1538,41 @@ static void gpController_SetTXOptions(UInt8 bindingId, gpRf4ce_ProfileId_t profi
     GP_LOG_SYSTEM_PRINTF("TXOptions: 0x%x",0,ControllerTxOptions);
 }
 
+//IR종료 callback.
+void gpIrTx_cbSendCommandConfirmGeneric(gpIrTx_Result_t status,gpIrTx_TvIrDesc_t* pDesc)
+{
+//	HAL_WDT_RESET();
+//    gpPoolMem_Free(pDesc);
+    
+    Controller_LedEnable(false,gpController_Led_ColorRed);
+    if(status != gpIrTx_ResultSuccess)
+    {
+        //Controller_LedIndication(&Controller_LedSequenceError);
+		GP_LOG_SYSTEM_PRINTF("IR_end callback!!!",0);
+    }
+    
+}
+Bool gpIrTx_cbIsKeyPressed(void)
+{
+#if 0
+    GP_LOG_PRINTF("gpIrTx_cbIsKeyPressed 0x%x",0,ControllerOperationMode);
+    if(!gpController_KeyReleased)
+    {
+        //GP_LOG_SYSTEM_PRINTF("CLIP",0);
+    }
+    return !gpController_KeyReleased;
+#else	
+    if(ControllerOperationMode == gpController_OperationModeIR)
+    {
+        //Controller_LedToggle(gpController_Led_ColorRed);
+		Controller_LedEnable(true,gpController_Led_ColorRed);
+        return true;
+    }
+//	if(ControllerOperationMode == gpController_OperationModeSetup)
+//    	return false;
+    return false;
+#endif
+}
 
 
 void Controller_SetVendorIdTimeOut(void)
@@ -1291,3 +1646,47 @@ Bool Controller_HandleVendorID(gpController_Keys_t *keys, gpRf4ce_VendorId_t *Ne
     /* Vendor ID not complete */
     return false;   
 }
+
+static void controller_GetIRKeysFromDatabase( void )
+{
+    volatile UInt8 i, keyId;
+
+    if( 0xFFFF != gpIRDatabase_GetIRTableId() )
+	{
+
+        for( i=0; i<APP_NUMBER_OF_TV_IR_KEYS; i++ )
+        {
+	        keyId = controller_TvIrKey_LogicalKeyId[i];
+	        if( 0 < gpIRDatabase_GetIRCode( keyId, gpProgrammableKey_Db[i].tvIrDesc.code ) )
+	        {
+	            gpProgrammableKey_Db[i].keyConfig = APP_TV_IR_DATA_AVAILABLE;
+
+	            gpIrTx_CorrectTimingGeneric(GP_PROGKEY_IRCODE_TXDEFINITION( gpProgrammableKey_Db[i].tvIrDesc.code ));
+
+	        }
+			else
+			{
+    			MEMSET(&gpProgrammableKey_Db[i], -1, sizeof(gpProgrammableKey_Db[i]));
+			}
+
+        }
+
+	}
+
+}
+
+
+Bool gpController_SelectDeviceInDatabase( UInt16 deviceId )
+{
+    Bool retVal = false;
+
+    gpIRDatabase_SetIRTableId( deviceId );
+
+    if( deviceId == gpIRDatabase_GetIRTableId() )
+    {
+        controller_GetIRKeysFromDatabase();
+        retVal = true;
+    }
+    return retVal;
+}
+

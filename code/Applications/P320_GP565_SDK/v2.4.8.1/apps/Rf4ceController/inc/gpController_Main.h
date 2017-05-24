@@ -42,6 +42,7 @@
 /*****************************************************************************
  *                    Macro Definitions
  *****************************************************************************/
+#define APP_DEFAULT_MODE                                gpController_ModeIRNec
 
 
 
@@ -55,12 +56,37 @@
 #define gpController_ModeTxTVIR                         0x02
 #define gpController_Mode_MAX	                        0x03
 
+typedef UInt8 gpController_Mode_t;
 
+typedef void (*gpController_cbKeyIndication_t)(gpKeyboard_pKeyInfo_t pKey);
+
+typedef struct controller_TvIrDesc_s
+{
+    UInt8   code[GP_PROGKEY_MAX_IRCODE_SIZE];
+} controller_TvIrDesc_t;
+
+typedef struct controller_KeyDesc_s
+{
+    UInt8                       keyConfig;
+    controller_TvIrDesc_t       tvIrDesc;
+} controller_KeyDesc_t;
+
+typedef struct  {
+    UInt16 backupActiveIRTableId;
+    UInt16 currentSearchIndex;
+    UInt16 lastAttemptedTvCode;
+} searchTvIrCode_t;
 
 /*****************************************************************************
  *                    Public Function Prototypes
  *****************************************************************************/
 
+extern Bool gpController_SelectDeviceInDatabase( UInt16 deviceId );
+extern void setup_cbKeyIndicationSearchTvIrCode( gpKeyboard_pKeyInfo_t pKey );
+extern gpController_cbKeyIndication_t  gpController_cbKeyIndication; //function pointer used to forward the key-information to the mode/setup specific handling
+extern UInt32 gpStatus_NumberOfSentIR;
+extern UInt32 gpStatus_NumberOfSentRF;
+GP_API UInt8 ControllerOperationMode;
 
 #endif /* _GPCONTROLLER_MAIN_H_ */
 
