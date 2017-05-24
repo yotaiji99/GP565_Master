@@ -35,6 +35,8 @@
 #include "gpController_Led.h"
 #include "hal.h"
 #include "gpSched.h"
+#include "gpLog.h"
+#include "gpController_Main.h"
 
 /*******************************************************************************
  *                      Defines
@@ -60,24 +62,16 @@
 #define Led_StatusOff                  false
 #define Led_StatusOn                   true
 
+#define GP_LED_BLINK_PATTERN_TIME_UNIT  (10000UL)
 /*******************************************************************************
  *                      Type definitions
  ******************************************************************************/
 
 /* Led sequence stat-machine parameters */
-typedef struct {
-    UInt8 sequenceStm;
-    UInt8 cntnumOfBlinks;
-    Bool sequence2Steady;
-    gpController_Led_Sequence_t sequence;
-} gpController_Led_sequenceStm_t;
-
-typedef Bool gpLed_Status_t;
-
 /*******************************************************************************
  *                      Static Function Declarations
  ******************************************************************************/
-static void gpController_Led_SetLed(gpLed_Status_t Led_Status, gpController_Led_Color_t color);
+void gpController_Led_SetLed(gpLed_Status_t Led_Status, gpController_Led_Color_t color);
 static void gpController_Led_CheckNextAction(gpController_Led_Sequence_t *sequence, UInt8 ledAction);
 
 /* Call-back functions from scheduler, triggers next time-based state-transition*/
@@ -97,6 +91,16 @@ static gpLed_Status_t LedSequenceStateMachine(gpController_Led_sequenceStm_t *le
 /* State-Machine data declarations */
 static gpController_Led_sequenceStm_t ledsequenceStmRed;
 static gpController_Led_sequenceStm_t ledsequenceStmGreen;
+
+static UInt8     Led_onTime;
+static UInt8     Led_offTime;
+static UInt8     Led_numberOfBlinks;
+static UInt8     Led_blinkIndex = 0;
+static UInt16    Led_ledPattern;
+// to properly handle nesting of calls, I need seperate counters for the red and green LED
+static UInt8     redLed_OnOffCounter = 0;
+static UInt8     greenLed_OnOffCounter = 0;
+static void_func Led_callback = NULL;
 
 /*******************************************************************************
  *                      Public Functions
@@ -169,6 +173,8 @@ static void gpController_Led_CheckNextAction(gpController_Led_Sequence_t *sequen
         {
             ledsequenceStmGreen.sequence2Steady = false;
         }
+
+		//GP_LOG_SYSTEM_PRINTF("sequenceStm = %d , Blinks = %d , Steady = %d",0,ledsequenceStmGreen.sequenceStm,ledsequenceStmGreen.cntnumOfBlinks,ledsequenceStmGreen.sequence2Steady);
         Led_Status = LedSequenceStateMachine(&ledsequenceStmGreen, ledAction, sequence, cbLedSequencePeriodGreen);
     }
 
@@ -195,6 +201,7 @@ static void cbLedSequencePeriodGreen(void)
     gpController_Led_SetLed(Led_Status, gpController_Led_ColorGreen);
 } /* End of cbLedSequencePeriodGreen*/
 
+extern LedSequenceBlink;
 static gpLed_Status_t LedSequenceStateMachine(gpController_Led_sequenceStm_t *ledsequenceStm,
                                              UInt8 ledAction,
                                              gpController_Led_Sequence_t *sequence,
@@ -202,7 +209,6 @@ static gpLed_Status_t LedSequenceStateMachine(gpController_Led_sequenceStm_t *le
 {
     gpController_Led_sequenceStm_t localLedsequenceStm = *ledsequenceStm;
     Bool Led_Status = Led_StatusOff;
-
     if(ledAction == Led_EventSequence)
     {
         localLedsequenceStm.sequence = *sequence;
@@ -213,6 +219,7 @@ static gpLed_Status_t LedSequenceStateMachine(gpController_Led_sequenceStm_t *le
     {
         case Led_Off:
         {
+			//GP_LOG_SYSTEM_PRINTF("LedSequenceStateMachine = Led_Off",0);
             Led_Status = Led_StatusOff;
             if ((ledAction == Led_EventOn) || (ledAction == Led_EventToggle))
             {
@@ -250,6 +257,7 @@ static gpLed_Status_t LedSequenceStateMachine(gpController_Led_sequenceStm_t *le
 
         case Led_On:
         {
+			//GP_LOG_SYSTEM_PRINTF("LedSequenceStateMachine = Led_On",0);
             Led_Status = Led_StatusOn;
             if ((ledAction == Led_EventOff) || (ledAction == Led_EventToggle))
             {
@@ -287,6 +295,7 @@ static gpLed_Status_t LedSequenceStateMachine(gpController_Led_sequenceStm_t *le
 
         case Led_SequenceOff:
         {
+			//GP_LOG_SYSTEM_PRINTF("LedSequenceStateMachine = Led_SequenceOff",0);
             Led_Status = Led_StatusOff;
             if (ledAction == Led_EventEndPeriod)
             {
@@ -314,6 +323,7 @@ static gpLed_Status_t LedSequenceStateMachine(gpController_Led_sequenceStm_t *le
 
         case Led_SequenceOn:
         {
+			//GP_LOG_SYSTEM_PRINTF("LedSequenceStateMachine = Led_SequenceOn",0);
             Led_Status = Led_StatusOn;
             if (ledAction == Led_EventEndPeriod)
             {
@@ -323,6 +333,7 @@ static gpLed_Status_t LedSequenceStateMachine(gpController_Led_sequenceStm_t *le
                 localLedsequenceStm.cntnumOfBlinks++;
                 if(localLedsequenceStm.cntnumOfBlinks > localLedsequenceStm.sequence.numOfBlinks)
                 {
+					LedSequenceBlink=false;
                     localLedsequenceStm.sequenceStm = Led_Off;
                     gpSched_UnscheduleEvent(cbLedSequence);
                 }
@@ -358,7 +369,7 @@ static gpLed_Status_t LedSequenceStateMachine(gpController_Led_sequenceStm_t *le
     return Led_Status;
 } /* End of LedSequenceStateMachine*/
 
-static void gpController_Led_SetLed(gpLed_Status_t Led_Status, gpController_Led_Color_t color)
+void gpController_Led_SetLed(gpLed_Status_t Led_Status, gpController_Led_Color_t color)
 {
     if(color == gpController_Led_ColorRed)
     {
@@ -406,3 +417,76 @@ Bool gpController_Led_SequenceActive(gpController_Led_Color_t color)
     }
     return active;    
 }
+
+void Led_GenerateNextToggle(void)
+{
+    UInt32 scheduleOffset;
+    if (Led_blinkIndex & 0x1)
+    {
+        // LED off
+        HAL_LED_CLR(GRN);
+        HAL_LED_CLR(RED);
+
+        scheduleOffset = GP_LED_BLINK_PATTERN_TIME_UNIT * Led_offTime;
+    }
+    else
+    {
+        // LED on
+        if((Led_ledPattern & (1 << (Led_blinkIndex / 2) & 0xFFFF)) != 0)
+        {
+            // RED LED
+            HAL_LED_SET(RED);
+        }
+        else
+        {
+            // GRN LED
+            HAL_LED_SET(GRN);
+        }
+        scheduleOffset = GP_LED_BLINK_PATTERN_TIME_UNIT * Led_onTime;
+    }
+
+    Led_blinkIndex++;
+
+    if ((Led_blinkIndex/2) < Led_numberOfBlinks)
+    {
+        gpSched_ScheduleEvent(scheduleOffset, Led_GenerateNextToggle);
+    }
+    else
+    {
+        //blinking finished
+        Led_blinkIndex = 0;
+        Led_numberOfBlinks = 0;
+        if (Led_callback != NULL)
+        {
+            gpSched_ScheduleEvent(GP_LED_BLINK_PATTERN_TIME_UNIT, Led_callback);
+        }
+    }
+}
+
+    gpController_Led_Color_t color;
+    /** Delay until the sequence is started (resolution 10 ms) */
+    UInt8 startTime;
+    /** Time the LED is enabled per blink (resolution 10 ms) */
+    UInt8 onTime;
+    /** Time the LED is disabled per blink (resolution 10 ms) */
+    UInt8 offTime;
+    /** The number of blinks (0 is undefined / 255 is infinite) */
+    UInt8 numOfBlinks;
+
+void gpLed_GenerateBlinkSequence(
+                        UInt8     color,
+                        UInt8     startTime,
+                        UInt16     onTime,
+                        UInt16     offTime,
+                        UInt8    numOfBlinks
+                    )
+{
+    Controller_LedSequenceBlinkIR.color = color;
+    Controller_LedSequenceBlinkIR.startTime = startTime;
+    Controller_LedSequenceBlinkIR.onTime = onTime;
+    Controller_LedSequenceBlinkIR.offTime = offTime;
+    Controller_LedSequenceBlinkIR.numOfBlinks = numOfBlinks;
+
+}
+
+

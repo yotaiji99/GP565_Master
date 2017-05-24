@@ -67,6 +67,8 @@ typedef UInt8 gpController_Led_MsgId_t;
 /** @brief Green LED. */
 #define gpController_Led_ColorGreen                            0x02
 
+#define GP_LED_BLINK_NUMBER(n)                                      50 /*ms*/ , 350 /*ms*/ , 200, n 
+
 /** @typedef gpController_Led_Color_t
  *  @brief The gpController_Led_Color_t type defines the LED color IDs.
 */
@@ -83,9 +85,9 @@ typedef struct gpController_Led_Sequence{
     /** Delay until the sequence is started (resolution 10 ms) */
     UInt8 startTime;
     /** Time the LED is enabled per blink (resolution 10 ms) */
-    UInt8 onTime;
+    UInt16 onTime;
     /** Time the LED is disabled per blink (resolution 10 ms) */
-    UInt8 offTime;
+    UInt16 offTime;
     /** The number of blinks (0 is undefined / 255 is infinite) */
     UInt8 numOfBlinks;
 } gpController_Led_Sequence_t;
@@ -97,6 +99,15 @@ typedef struct gpController_Led_Sequence{
 typedef union {
     gpController_Led_Sequence_t sequence;
 } gpController_Led_Msg_t;
+
+typedef struct {
+    UInt8 sequenceStm;
+    UInt8 cntnumOfBlinks;
+    Bool sequence2Steady;
+    gpController_Led_Sequence_t sequence;
+} gpController_Led_sequenceStm_t;
+
+typedef Bool gpLed_Status_t;
 
 /******************************************************************************
  *                    Public Function Definitions
@@ -129,4 +140,7 @@ GP_API void gpController_Led_Msg(  gpController_Led_MsgId_t msgId,
  */
 Bool gpController_Led_SequenceActive(gpController_Led_Color_t color);
 
+//GP_API void gpLed_GenerateBlinkSequence(UInt8 timeOffset, UInt8 onTime, UInt8 offTime, UInt8 nbrOfBlinks, UInt16 ledPattern, void_func callbackOnFinish);
+ GP_API void gpLed_GenerateBlinkSequence(UInt8 color, UInt8 startTime, UInt16 onTime, UInt16 offTime, UInt8 numOfBlinks);
+ GP_API void gpController_Led_SetLed(gpLed_Status_t Led_Status, gpController_Led_Color_t color);
 #endif /* _GPCONTROLLER_LED_H_ */

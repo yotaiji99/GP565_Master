@@ -52,40 +52,74 @@
 
 #define HAL_LED_ACTIVE_LOW
 
-#define GRN 3 // GPIO17 - LED Active when low
+#ifdef GP_DIVERSITY_XSIF_DEBUG_ENABLED
+#define GRN 1 // GPIO21 - LED Active when low
 #define HAL_LED_GRN_MAX_OUTPUT  255
 #define HAL_LED_GRN_FADE_IN_UNIT     11 /* 50 ms */ 
 #define HAL_LED_GRN_FADE_OUT_UNIT     11 /* 50 ms */ 
-#define RED 2 // GPIO16 - LED Active when low
+#define RED 0 // GPIO20 - LED Active when low
 #define HAL_LED_RED_MAX_OUTPUT  255
 
-#define HAL_LED_SET_GRN() do { GP_WB_WRITE_LED_FADE_3(1); GP_WB_WRITE_LED_SLOPE_TIME_UNIT(HAL_LED_GRN_FADE_IN_UNIT); GP_WB_WRITE_LED_ENABLE_3(1); } while(false)
-#define HAL_LED_CLR_GRN() do { GP_WB_WRITE_LED_FADE_3(1); GP_WB_WRITE_LED_SLOPE_TIME_UNIT(HAL_LED_GRN_FADE_OUT_UNIT); GP_WB_WRITE_LED_ENABLE_3(0); } while(false)
-#define HAL_LED_TST_GRN() GP_WB_READ_LED_ENABLE_3()
+#define HAL_LED_SET_GRN() do {  GP_WB_WRITE_LED_ENABLE_1(1); } while(false)
+#define HAL_LED_CLR_GRN() do {  GP_WB_WRITE_LED_ENABLE_1(0); } while(false)
+#define HAL_LED_TST_GRN() GP_WB_READ_LED_ENABLE_1()
 #define HAL_LED_TGL_GRN() do { if(HAL_LED_TST_GRN()) { HAL_LED_CLR_GRN(); } else { HAL_LED_SET_GRN(); }; } while(false)
 
-#define HAL_LED_SET_RED() do {  GP_WB_WRITE_LED_ENABLE_2(1); } while(false)
-#define HAL_LED_CLR_RED() do {  GP_WB_WRITE_LED_ENABLE_2(0); } while(false)
-#define HAL_LED_TST_RED() GP_WB_READ_LED_ENABLE_2()
+#define HAL_LED_SET_RED() do {  GP_WB_WRITE_LED_ENABLE_0(1); } while(false)
+#define HAL_LED_CLR_RED() do {  GP_WB_WRITE_LED_ENABLE_0(0); } while(false)
+#define HAL_LED_TST_RED() GP_WB_READ_LED_ENABLE_0()
 #define HAL_LED_TGL_RED() do { if(HAL_LED_TST_RED()) { HAL_LED_CLR_RED(); } else { HAL_LED_SET_RED(); }; } while(false)
+
+#define HAL_LED_INIT_LEDS() do { \
+    /*Initialize LED driver block 2 for GPIO 20*/ \
+    GP_WB_WRITE_LED_THRESHOLD_0(HAL_LED_RED_MAX_OUTPUT); \
+    GP_WB_WRITE_LED_LED0_OUTPUT_PINMAP(GP_WB_ENUM_GENERIC_SEVEN_PINMAP_MAPPING_E); \
+    GP_WB_WRITE_LED_LED0_OUTPUT_INVERT(1); \
+    GP_WB_READ_IOB_GPIO_20_23_DRIVE_STRENGTH(); \
+    HAL_LED_CLR(RED); \
+    /*Initialize LED driver block 3 for GPIO 21*/ \
+    GP_WB_WRITE_LED_THRESHOLD_1(HAL_LED_GRN_MAX_OUTPUT); \
+    GP_WB_WRITE_LED_LED1_OUTPUT_PINMAP(GP_WB_ENUM_GENERIC_SEVEN_PINMAP_MAPPING_E); \
+    GP_WB_WRITE_LED_LED1_OUTPUT_INVERT(1); \
+    GP_WB_READ_IOB_GPIO_20_23_DRIVE_STRENGTH(); \
+    HAL_LED_CLR(GRN); \
+} while(false)
+
+#else
+
+#define GRN 2 // GPIO17 - LED Active when low
+#define HAL_LED_GRN_MAX_OUTPUT  255
+#define HAL_LED_GRN_FADE_IN_UNIT     11 /* 50 ms */ 
+#define HAL_LED_GRN_FADE_OUT_UNIT     11 /* 50 ms */ 
+#define RED 3 // GPIO16 - LED Active when low
+#define HAL_LED_RED_MAX_OUTPUT  255
+
+#define HAL_LED_SET_RED() do {  GP_WB_WRITE_LED_ENABLE_3(1); } while(false)
+#define HAL_LED_CLR_RED() do {  GP_WB_WRITE_LED_ENABLE_3(0); } while(false)
+#define HAL_LED_TST_RED() GP_WB_READ_LED_ENABLE_3()
+#define HAL_LED_TGL_RED() do { if(HAL_LED_TST_GRN()) { HAL_LED_CLR_GRN(); } else { HAL_LED_SET_GRN(); }; } while(false)
+
+#define HAL_LED_SET_GRN() do {  GP_WB_WRITE_LED_ENABLE_2(1); } while(false)
+#define HAL_LED_CLR_GRN() do {  GP_WB_WRITE_LED_ENABLE_2(0); } while(false)
+#define HAL_LED_TST_GRN() GP_WB_READ_LED_ENABLE_2()
+#define HAL_LED_TGL_GRN() do { if(HAL_LED_TST_RED()) { HAL_LED_CLR_RED(); } else { HAL_LED_SET_RED(); }; } while(false)
 
 #define HAL_LED_INIT_LEDS() do { \
     /*Initialize LED driver block 2 for GPIO 16*/ \
     GP_WB_WRITE_LED_THRESHOLD_2(HAL_LED_RED_MAX_OUTPUT); \
     GP_WB_WRITE_LED_LED2_OUTPUT_PINMAP(GP_WB_ENUM_GENERIC_SEVEN_PINMAP_MAPPING_B); \
     GP_WB_WRITE_LED_LED2_OUTPUT_INVERT(1); \
-    GP_WB_WRITE_IOB_GPIO_16_19_DRIVE_STRENGTH(GP_WB_ENUM_DRIVE_STRENGTH_DRIVE_10MA); \
-    HAL_LED_CLR(RED); \
+    GP_WB_READ_IOB_GPIO_0_3_DRIVE_STRENGTH(); \
+    HAL_LED_CLR(GRN); \
     /*Initialize LED driver block 3 for GPIO 17*/ \
     GP_WB_WRITE_LED_THRESHOLD_3(HAL_LED_GRN_MAX_OUTPUT); \
     GP_WB_WRITE_LED_LED3_OUTPUT_PINMAP(GP_WB_ENUM_GENERIC_SEVEN_PINMAP_MAPPING_B); \
-    GP_WB_WRITE_LED_FADE_3(1); \
     GP_WB_WRITE_LED_LED3_OUTPUT_INVERT(1); \
-    GP_WB_WRITE_IOB_GPIO_16_19_DRIVE_STRENGTH(GP_WB_ENUM_DRIVE_STRENGTH_DRIVE_10MA); \
-    HAL_LED_CLR(GRN); \
-    GP_WB_WRITE_LED_USE_SHORT_TIME_BASE(1); \
+    GP_WB_READ_IOB_GPIO_0_3_DRIVE_STRENGTH(); \
+    HAL_LED_CLR(RED); \
 } while(false)
 
+#endif
 /*****************************************************************************
  *                    GPIO - BTN - No buttons used
  *****************************************************************************/

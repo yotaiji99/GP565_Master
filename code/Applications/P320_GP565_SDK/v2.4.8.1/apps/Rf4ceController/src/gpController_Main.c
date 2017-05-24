@@ -271,6 +271,28 @@ static const gpController_Led_Sequence_t Controller_LedSequenceBinding =
 static const gpController_Led_Sequence_t Controller_LedSequenceSuccess =
     {gpController_Led_ColorGreen, 50, 10, 10, 2 };
 
+static const gpController_Led_Sequence_t Controller_LedSequenceGrnBlink =
+    {gpController_Led_ColorGreen, 50, 50, 300, 1 };
+
+static const gpController_Led_Sequence_t Controller_LedSequenceRedBlink =
+    {gpController_Led_ColorRed, 50, 50, 0, 1 };
+
+static const gpController_Led_Sequence_t Controller_LedSequenceTest1 =
+    {gpController_Led_ColorGreen, 50, 200, 100, 2 };
+
+static const gpController_Led_Sequence_t Controller_LedSequenceTest2 =
+    {gpController_Led_ColorGreen, 50, 200, 100, 1 };
+
+static const gpController_Led_Sequence_t Controller_LedSequenceTest3 =
+    {gpController_Led_ColorRed, 50, 200, 100, 1 };
+
+static const gpController_Led_Sequence_t Controller_LedSequenceTest4 =
+    {gpController_Led_ColorRed, 50, 200, 100, 2 };
+
+static const gpController_Led_Sequence_t Controller_LedSequenceError_Green =
+    {gpController_Led_ColorGreen, 50, 80, 0, 1 };
+
+gpController_Led_Sequence_t Controller_LedSequenceBlinkIR;
 
 
 
@@ -312,6 +334,61 @@ static void App_DoReset(void);
     return ControllerBindingId;
  }
 
+void LED_Sequence_Control(gpController_Led_Sequence_t sequence)
+{
+	UInt8 i;
+	if(sequence.color == gpController_Led_ColorGreen)
+	{
+		for(i=0;i<sequence.numOfBlinks;i++)
+		{
+		    gpController_Led_SetLed(true,gpController_Led_ColorGreen);
+		    HAL_WAIT_MS(sequence.onTime);
+		    gpController_Led_SetLed(false,gpController_Led_ColorGreen);
+		    HAL_WAIT_MS(sequence.offTime);
+		}
+	}
+	else if(sequence.color == gpController_Led_ColorRed)
+	{
+		for(i=0;i<sequence.numOfBlinks;i++)
+		{
+		    gpController_Led_SetLed(true,gpController_Led_ColorRed);
+		    HAL_WAIT_MS(sequence.onTime);
+		    gpController_Led_SetLed(false,gpController_Led_ColorRed);
+		    HAL_WAIT_MS(sequence.offTime);
+		}
+
+	}
+	
+}
+
+void LED_SetOk_Control(void)
+{
+	#if 0
+    gpController_Led_SetLed(true,gpController_Led_ColorGreen);
+    HAL_WAIT_MS(200);
+    gpController_Led_SetLed(false,gpController_Led_ColorGreen);
+    HAL_WAIT_MS(100);
+    gpController_Led_SetLed(true,gpController_Led_ColorGreen);
+    HAL_WAIT_MS(200);
+    gpController_Led_SetLed(false,gpController_Led_ColorGreen);
+	#else
+    gpLed_GenerateBlinkSequence(gpController_Led_ColorGreen, 10,10,10,2 );
+	gpController_Led_Msg(gpController_Led_MsgId_SequenceIndication,&Controller_LedSequenceBlinkIR);
+	#endif
+}
+
+void LED_SetError_Control(void)
+{
+	#if 0
+    gpController_Led_SetLed(true,gpController_Led_ColorRed);
+    HAL_WAIT_MS(1600);
+    gpController_Led_SetLed(false,gpController_Led_ColorRed);
+	#else
+    gpLed_GenerateBlinkSequence(gpController_Led_ColorRed, 10, 200, 0, 1 );
+	gpController_Led_Msg(gpController_Led_MsgId_SequenceIndication,&Controller_LedSequenceBlinkIR);
+	#endif
+}
+
 /*******************************************************************************
  *                    ZRC 2.0 and 1.1 Callback Functions
  ******************************************************************************/
@@ -348,14 +425,16 @@ void gpController_Zrc_cbMsg(gpController_Zrc_MsgId_t msgId,
             if(pMsg->BindConfirmParams.status == gpRf4ce_ResultSuccess)
             {
                 gpController_BindSuccess(pMsg->BindConfirmParams.bindingId, pMsg->BindConfirmParams.profileId);
-                Controller_LedIndication(&Controller_LedSequenceSuccess);
+                //Controller_LedIndication(&Controller_LedSequenceSuccess);
+				gpSched_ScheduleEvent( 300000L, LED_SetOk_Control );
 				gpController_Mode = gpController_ModeZrc;
             }
             else
             {
                 Controller_LedEnable(false, gpController_Led_ColorGreen);
                 gpController_BindFailure(pMsg->BindConfirmParams.status);
-                Controller_LedIndication(&Controller_LedSequenceError);
+				gpSched_ScheduleEvent( 100000L, LED_SetError_Control );
+                //Controller_LedIndication(&Controller_LedSequenceError);
 				GP_LOG_SYSTEM_PRINTF("bind confirm fail!!!,",0);
             }
             /* stop binding blink */
@@ -374,7 +453,9 @@ void gpController_Zrc_cbMsg(gpController_Zrc_MsgId_t msgId,
             }
             else
             {
-                Controller_LedIndication(&Controller_LedSequenceError);
+                //Controller_LedIndication(&Controller_LedSequenceError);
+				gpSched_ScheduleEvent( 100000L, LED_SetError_Control );
+				GP_LOG_SYSTEM_PRINTF("unbind confirm fail!!!",0);
             }
             break;
         }
@@ -402,7 +483,8 @@ void gpController_Zrc_cbMsg(gpController_Zrc_MsgId_t msgId,
                 }
                 else
                 {
-                    Controller_LedEnable(false,gpController_Led_ColorGreen);
+					if(ControllerOperationMode != gpController_OperationModeSetup)
+                    	Controller_LedEnable(false,gpController_Led_ColorGreen);
 
 
                 }
@@ -447,7 +529,7 @@ void gpController_Zrc_cbMsg(gpController_Zrc_MsgId_t msgId,
 #endif /*GP_DIVERSITY_APP_ZRC2_0*/
         case gpController_Zrc_MsgId_cbEarlyRepeatIndication:
         {
-            Controller_LedToggle(gpController_Led_ColorGreen);
+            ///Controller_LedToggle(gpController_Led_ColorGreen);
             break;
         }
 
@@ -481,7 +563,9 @@ void gpController_Mso_cbMsg(gpController_Mso_MsgId_t msgId,
             }
             else
             {
-                Controller_LedIndication(&Controller_LedSequenceError);
+                //Controller_LedIndication(&Controller_LedSequenceError);
+                //Controller_LedIndication(&Controller_LedSequenceError_Green);
+				gpSched_ScheduleEvent( 100000L, LED_SetError_Control );
                 gpController_BindFailure(pMsg->BindConfirmParams.status);
 				GP_LOG_SYSTEM_PRINTF("BindConfirm fail!!!",0);
             }
@@ -666,7 +750,8 @@ static void gpController_BindAbortFull(void)
     }
 
     /* blink error to indicate cancel */
-    Controller_LedIndication(&Controller_LedSequenceError);
+//    Controller_LedIndication(&Controller_LedSequenceError);
+	gpSched_ScheduleEvent( 100000L, LED_SetError_Control );
 	GP_LOG_SYSTEM_PRINTF("BindAbortFull!!!",0);
 }
 
@@ -1034,13 +1119,23 @@ void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
                 msgZrc.KeyPressedIndication.profileId = ControllerProfileId;
                 msgZrc.KeyPressedIndication.vendorId  = ControllerVendorId;
                 msgZrc.KeyPressedIndication.txOptions = ControllerTxOptions;
-                
-                if(msgZrc.KeyPressedIndication.keys.count != 0)
+
+                if(msgZrc.KeyPressedIndication.keys.count == 1)
                 {
+                    ///GP_LOG_SYSTEM_PRINTF("Key pressed",0); /* grn LED on */
+                    Controller_LedEnable(true, gpController_Led_ColorGreen);
                     ControllerKeyPressConfirmPending = true;
-                    Controller_LedEnable(true,gpController_Led_ColorGreen);
                 }
-                gpController_Zrc_Msg(gpController_Zrc_MsgId_KeyPressedIndication, &msgZrc);
+				#if 1
+                else
+                {
+                    ///GP_LOG_SYSTEM_PRINTF("Key released,",0); /*  grn LED off */
+                    Controller_LedEnable(false, gpController_Led_ColorGreen);
+                    Controller_LedEnable(false, gpController_Led_ColorRed);
+					ControllerOperationMode = gpController_OperationModeNormal;
+				}
+				#endif
+               	gpController_Zrc_Msg(gpController_Zrc_MsgId_KeyPressedIndication, &msgZrc);
             }
             else if (ControllerOperationMode == gpController_OperationModeSetVendorID)
             {
@@ -1184,7 +1279,9 @@ void gpController_Setup_cbMsg(  gpController_Setup_MsgId_t msgId,
         {
             ControllerOperationMode = gpController_OperationModeBinding;
             GP_LOG_SYSTEM_PRINTF("bindStart %x",0,msgId);
-
+			
+			Controller_LedEnable(false,gpController_Led_ColorRed);
+			Controller_LedEnable(false,gpController_Led_ColorGreen);
             Controller_LedIndication(&Controller_LedSequenceBinding);
 #ifdef GP_DIVERSITY_APP_ZID     
             gpController_Zid_Msg(gpController_Zid_MsgId_BindRequest, NULL);
@@ -1210,6 +1307,7 @@ void gpController_Setup_cbMsg(  gpController_Setup_MsgId_t msgId,
             {
                 gpController_Mso_Msg_t msg;
                 msg.bindingId = ControllerBindingId;
+            	Controller_LedIndication(&Controller_LedSequenceSuccess);
                 gpController_Mso_Msg(gpController_Mso_MsgId_UnbindRequest, &msg);
             }
             else
@@ -1360,7 +1458,6 @@ void Application_Init( void )
 #ifdef GP_RF4CEVOICE_DIVERSITY_ORIGINATOR
     gpController_Voice_Init();
 #endif
-
     /* Trigger Reset of ZRC. */
     gpController_Zrc_Msg(gpController_Zrc_MsgId_ResetRequest, NULL);
 
@@ -1637,6 +1734,13 @@ Bool gpIrTx_cbIsKeyPressed(void)
 //    	return false;
     return false;
 #endif
+}
+
+
+void gpIrTx_cbSendCommandConfirmPredefined( gpIrTx_Result_t status, Bool repeated, gpIrTx_CommandCode_t function )
+{
+		Controller_LedEnable(false,gpController_Led_ColorRed);
+//		Controller_LedEnable(false,gpController_Led_ColorGreen);
 }
 
 
