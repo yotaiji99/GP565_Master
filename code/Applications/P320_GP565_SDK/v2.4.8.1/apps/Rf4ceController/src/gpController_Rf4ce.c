@@ -116,7 +116,6 @@ const gpNvm_Tag_t ROM gpController_Rf4ce_NvmSection[] FLASH_PROGMEM = {
  ******************************************************************************/
 void gpController_Rf4ce_Init(void)
 {
-    gpBaseComps_StackInit();
     gpNvm_RegisterSection(GP_COMPONENT_ID, gpController_Rf4ce_NvmSection, sizeof(gpController_Rf4ce_NvmSection)/sizeof(gpNvm_Tag_t), NULL);
 }
 

@@ -49,7 +49,7 @@
 /*******************************************************************************
  *                      Defines
  ******************************************************************************/
-#define TX_OPTIONS_MSO_BASE             0x8044      /* MSB:-    // User Control tx options <15-8>
+#define TX_OPTIONS_MSO_BASE             0x804C/*0x8044*/      /* MSB:-    // User Control tx options <15-8>
                                                                     Repeat                      = 1 (Repeat Enable)
 
                                                                     // Rf4ce NSDU tx options <7-0>

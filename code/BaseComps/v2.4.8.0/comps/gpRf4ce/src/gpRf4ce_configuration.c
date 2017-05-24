@@ -43,7 +43,7 @@
 
 /** The manufacturer specific vendor identifier for this node. */
 #ifndef GP_RF4CE_NWKC_VENDOR_IDENTIFIER
-#define GP_RF4CE_NWKC_VENDOR_IDENTIFIER gpRf4ce_VendorIdGreenpeak
+#define GP_RF4CE_NWKC_VENDOR_IDENTIFIER gpRf4ce_VendorIdTestVendor1	//gpRf4ce_VendorIdGreenpeak
 #endif
 
 /** The manufacturer specific identification string for this node. */

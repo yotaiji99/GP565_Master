@@ -240,7 +240,7 @@
 /** The maximum duty cycle in MAC symbols, permitted for a power saving device.(1s) */
 
 #ifndef GP_RF4CE_NWKC_MAX_DUTYCYCLE
-#define GP_RF4CE_NWKC_MAX_DUTYCYCLE                     62500UL
+#define GP_RF4CE_NWKC_MAX_DUTYCYCLE                     6250UL
 #endif //GP_RF4CE_NWKC_MAX_DUTYCYCLE
 #define GP_RF4CE_NWKC_MAX_DUTYCYCLE_MS                  GP_RF4CE_NWKC_MAX_DUTYCYCLE*GP_MACCORE_SYMBOL_DURATION
 #define GP_RF4CE_NWKC_MAX_KEY_SEED_WAIT_TIME            3750L

@@ -349,12 +349,14 @@ void gpController_Zrc_cbMsg(gpController_Zrc_MsgId_t msgId,
             {
                 gpController_BindSuccess(pMsg->BindConfirmParams.bindingId, pMsg->BindConfirmParams.profileId);
                 Controller_LedIndication(&Controller_LedSequenceSuccess);
+				gpController_Mode = gpController_ModeZrc;
             }
             else
             {
                 Controller_LedEnable(false, gpController_Led_ColorGreen);
                 gpController_BindFailure(pMsg->BindConfirmParams.status);
                 Controller_LedIndication(&Controller_LedSequenceError);
+				GP_LOG_SYSTEM_PRINTF("bind confirm fail!!!,",0);
             }
             /* stop binding blink */
 
@@ -414,6 +416,7 @@ void gpController_Zrc_cbMsg(gpController_Zrc_MsgId_t msgId,
             {
                 Controller_LedEnable(false, gpController_Led_ColorGreen);
                 Controller_LedIndication(&Controller_LedSequenceError);
+				GP_LOG_SYSTEM_PRINTF("KeyFailedIndication fail!!!",0);
             }
             break;
         }
@@ -451,7 +454,7 @@ void gpController_Zrc_cbMsg(gpController_Zrc_MsgId_t msgId,
         default:
         {
             /* Unknown message ID */
-            GP_LOG_SYSTEM_PRINTF("Unknown message ID 0x%x", 0, msgId);
+///            GP_LOG_SYSTEM_PRINTF("Unknown message ID 0x%x", 0, msgId);
             GP_ASSERT_DEV_EXT(false);
             break;
         }
@@ -480,6 +483,7 @@ void gpController_Mso_cbMsg(gpController_Mso_MsgId_t msgId,
             {
                 Controller_LedIndication(&Controller_LedSequenceError);
                 gpController_BindFailure(pMsg->BindConfirmParams.status);
+				GP_LOG_SYSTEM_PRINTF("BindConfirm fail!!!",0);
             }
 
 
@@ -510,7 +514,6 @@ void gpController_Mso_cbMsg(gpController_Mso_MsgId_t msgId,
             
             ControllerOperationMode = gpController_OperationModeBinding;
             Controller_LedIndication(&Controller_LedSequenceBinding);
-
             ControllerBindingId = pMsg->ValidationParams.bindingId;
             ControllerProfileId = pMsg->ValidationParams.profileId;
             gpController_SetTXOptions(ControllerBindingId, ControllerProfileId);
@@ -526,7 +529,7 @@ void gpController_Mso_cbMsg(gpController_Mso_MsgId_t msgId,
         {
             /*confirmation for previously issued unbind request*/
             gpController_UnbindConfirm(pMsg->UnbindConfirmParams.bindingId);
-            GP_LOG_SYSTEM_PRINTF("MsgId_cbUnbindConfirm. BindId: 0x%x, ProfileId: 0x%x",0,ControllerBindingId,ControllerProfileId);
+///            GP_LOG_SYSTEM_PRINTF("MsgId_cbUnbindConfirm. BindId: 0x%x, ProfileId: 0x%x",0,ControllerBindingId,ControllerProfileId);
 
             break;
         }
@@ -592,7 +595,7 @@ void gpController_Rf4ce_cbMsg(  gpController_Rf4ce_MsgId_t msgId,
         {
             gpRf4ce_VendorString_t Application_VendorString = {XSTRINGIFY(GP_RF4CE_NWKC_VENDOR_STRING)};
             gpController_Rf4ce_Msg_t msgRf4ce;
-
+			msgRf4ce.userString.str[0]=NULL;
             /* Get Binding Id from NVM. */
             gpController_Rf4ce_AttrGet(gpController_Rf4ce_MsgId_AttrBindingId, &msgRf4ce);
             /* Update local binding Id */
@@ -615,7 +618,7 @@ void gpController_Rf4ce_cbMsg(  gpController_Rf4ce_MsgId_t msgId,
 
             /*Set user string. Note that user string is limited in length as it is being used to share parameters during pairing.
               The maximum length for the application is 8 bytes, although the length of the userstring at RF4CE level is 15 bytes (but the most significant bytes will get overwritten during the pairing.*/
-            MEMCPY_P(msgRf4ce.userString.str,"GPREF",5);
+            MEMCPY_P(msgRf4ce.userString.str,"CRB36",5);
             gpController_Rf4ce_AttrSet(gpController_Rf4ce_MsgId_AttrUserString,&msgRf4ce);
 
 #ifdef GP_DIVERSITY_APP_ZID
@@ -626,9 +629,11 @@ void gpController_Rf4ce_cbMsg(  gpController_Rf4ce_MsgId_t msgId,
             /* RF4CE started, enable key scanner now. */
             gpController_KeyBoard_Msg(gpController_KeyBoard_MsgId_KeyScanEnable, NULL);
 
-            GP_LOG_SYSTEM_PRINTF("RF4CE booted. Current BindId: 0x%x, ProfileId: 0x%x",0,ControllerBindingId,ControllerProfileId);
-            GP_LOG_SYSTEM_PRINTF("VendorId: 0x%x",0,(UInt16)ControllerVendorId);
+///            GP_LOG_SYSTEM_PRINTF("RF4CE booted. Current BindId: 0x%x, ProfileId: 0x%x",0,ControllerBindingId,ControllerProfileId);
+///            GP_LOG_SYSTEM_PRINTF("VendorId: 0x%x",0,(UInt16)ControllerVendorId);
+#ifdef GP_DIVERSITY_LOG
             gpLog_Flush();
+#endif
             break;
         }
 
@@ -662,6 +667,7 @@ static void gpController_BindAbortFull(void)
 
     /* blink error to indicate cancel */
     Controller_LedIndication(&Controller_LedSequenceError);
+	GP_LOG_SYSTEM_PRINTF("BindAbortFull!!!",0);
 }
 
 /*******************************************************************************
@@ -774,7 +780,7 @@ Bool Controller_HandleAudioKeys(gpController_Zrc_Msg_t *pZrc)
     {
         if(audioActive)
         {
-            GP_LOG_SYSTEM_PRINTF("App: stopped voice transmission", 0);
+///            GP_LOG_SYSTEM_PRINTF("App: stopped voice transmission", 0);
             gpController_Voice_Msg(gpController_Voice_MsgId_Stop, NULL);
             audioActive = false;
             Controller_LedEnable(false, gpController_Led_ColorRed);
