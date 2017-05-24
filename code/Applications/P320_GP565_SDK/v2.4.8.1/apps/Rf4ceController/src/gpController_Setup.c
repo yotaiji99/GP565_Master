@@ -212,6 +212,11 @@ gpSetup_Command_t setup_TranslateKeyCombination( UInt8 paramLength, UInt8 * para
         {
             return IR_TV_SETUP;
         }
+        // <<SETUP>><A> - search TV IR code
+        case gpKeyboard_LogicalId_F4Yellow:
+        {
+            return SEARCH_TV_IR_CODE;
+        }
         // <<SETUP>><B> - blink battery status
         case gpKeyboard_LogicalId_F1Blue:
         {
@@ -439,6 +444,22 @@ static void Setup_SelectCommand(gpController_Keys_t keys, UInt8 paramLength,UInt
 	            gpSetup_Data.expectedButton = gpKeyboard_LogicalId_Number1;
 				gpSched_ScheduleEvent( 100000L, LED_SetOk_Control);
 				ControllerOperationSpecial = SET_BLINK_SW_VERSION;
+	            break;
+	        }
+	        case SEARCH_TV_IR_CODE:	//setup후 special mode로 진입.
+	        {
+                gpSched_UnscheduleEvent(Setup_Timeout);
+                SETUP_INDICATION(gpController_Setup_MsgId_cbSetupLeftIndication);
+				ControllerOperationMode = gpController_OperationModeSpecial;
+				ControllerOperationSpecial = SET_SEARCH_TV_IR_CODE;
+	            // I always want to start with the first entry in the database
+	            gpSetup_TvHunt.lastAttemptedTvCode = 0xFFFF;
+	            gpSetup_TvHunt.currentSearchIndex = 0;
+	            // store previous IrTable ID
+	            gpSetup_TvHunt.backupActiveIRTableId = gpIRDatabase_GetIRTableId();
+				setup_SearchTvIrCodeNextAttempt();
+				// ED wants the first code to be sent immediately, so schedule an intermediate event
+	            // since I will send an IR message immediately, I don't want to generate a success blink here
 	            break;
 	        }
 	        case SEND_VC_TO_DTA:

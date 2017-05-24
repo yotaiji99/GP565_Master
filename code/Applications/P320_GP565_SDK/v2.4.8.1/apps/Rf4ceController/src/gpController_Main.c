@@ -60,6 +60,7 @@
 #include "gpIrDatabase.h"
 #include "gpReset.h"
 #include "Hal.h"
+
 /*******************************************************************************
  *                    Defines
  ******************************************************************************/
@@ -159,6 +160,8 @@ gpController_Mode_t             gpController_Mode=gpController_ModeIRNec;       
 
 UInt8 ControllerOperationSpecial=0xff;
 Bool gpSetup_SetupBusy = false;
+searchTvIrCode_t     gpSetup_TvHunt;
+
 //Static buffer needed for SetRIB request
 UInt8 gpStatus_RIBData[11];
 
@@ -333,6 +336,7 @@ static void gpController_Zid_ReportConfirm(gpRf4ce_Result_t status);
 #endif /* GP_DIVERSITY_APP_ZID */
 static void App_DoReset(void);
 
+void setup_cbKeyIndicationSearchTvIrCode( gpKeyboard_pKeyInfo_t pKey );
 /*******************************************************************************
  *                    Helper functions
  *******************************************************************************/
@@ -1200,6 +1204,115 @@ void setup_cbKeyIndicationVersion( UInt8 pKey )
 	}
 }
 
+static controller_TvIrDesc_t* controller_GetTvIrDesc( UInt8 key )
+{
+    if( key >= APP_NUMBER_OF_TV_IR_KEYS )
+    {
+        return NULL;
+    }
+    return &(gpProgrammableKey_Db[key].tvIrDesc);
+}
+
+void gpController_ActionIdTxTvIRPowerOff_func(void)
+{
+    controller_TvIrDesc_t* pDesc;
+    pDesc = controller_GetTvIrDesc( APP_TV_IR_POWEROFF_INDEX );
+    if( NULL != pDesc )
+    {
+		Controller_LedEnable(true,gpController_Led_ColorRed);
+        gpIrTx_SendCommandRequestGeneric( (gpIrTx_TvIrDesc_t*)pDesc->code, false, 0 );
+    }
+
+}
+
+static UInt16 setup_searchIndexToTvCode( UInt16 index )
+{
+    gpIRDatabase_SetIRTableIndex( index );
+    return gpIRDatabase_GetIRTableId();
+}
+
+static UInt16 setup_incrementSearchIndex( UInt16 index )
+{
+    UInt16 devCode; 
+    for(;;)
+    {
+        index++;
+        gpIRDatabase_SetIRTableIndex( index );
+        if(index != gpIRDatabase_GetIRTableIndex())
+        {
+            index = SETUP_INVALID_INDEX;
+            break;
+        }
+        devCode = setup_searchIndexToTvCode( index );
+        if( (devCode >= 0) && (devCode <= 9999) )
+        {
+            break;
+        }
+    }
+
+    return index;
+}
+
+void setup_SearchTvIrCodeNextAttempt( void )
+{
+    if( SETUP_INVALID_INDEX != gpSetup_TvHunt.currentSearchIndex )
+    {
+        gpSetup_TvHunt.lastAttemptedTvCode = setup_searchIndexToTvCode( gpSetup_TvHunt.currentSearchIndex );
+        gpController_SelectDeviceInDatabase( gpSetup_TvHunt.lastAttemptedTvCode );
+
+///        gpController_ActionQueuePushBack( gpController_ActionIdTxTvIRPowerOff, 0, 0 );
+		gpController_ActionIdTxTvIRPowerOff_func();
+        gpSetup_TvHunt.currentSearchIndex = setup_incrementSearchIndex( gpSetup_TvHunt.currentSearchIndex );
+
+        gpSched_ScheduleEvent( 10000000L, Setup_Timeout_without_setno );
+    }
+    else
+    {
+		gpSched_UnscheduleEvent(Setup_Timeout_without_setno);
+		Setup_Timeout_without_setno();
+		LED_SetError_Control();
+    }
+}
+
+void setup_cbKeyIndicationSearchTvIrCode( gpKeyboard_pKeyInfo_t pKey )
+{
+    if( pKey == NULL )
+    {
+        return;
+    }
+    if( gpKeyboard_LogicalId_ChannelUp == pKey )
+    {
+        // Only start with next TV ir if previous is ready.
+        if( !GP_WB_READ_IR_BUSY() )
+        {
+			gpSched_UnscheduleEvent(Setup_Timeout_without_setno);
+            gpSched_ScheduleEvent( 0, setup_SearchTvIrCodeNextAttempt );
+        }
+    }
+    else if( gpKeyboard_LogicalId_SetupMenu == pKey )
+    {
+        if( SETUP_INVALID_TV_CODE != gpSetup_TvHunt.lastAttemptedTvCode )
+        {
+            // setting correct IRTableId is done in gpProgrammableKey_SelectDeviceInDatabase.
+            gpController_SelectDeviceInDatabase( gpSetup_TvHunt.lastAttemptedTvCode );
+            // also make sure the controller 'knows' to send to the TV
+            gpController_SetDtaMode( false );            
+            gpSetup_BlinkFail = false;
+        }
+		gpSched_UnscheduleEvent(Setup_Timeout_without_setno);
+		//Setup_Timeout_without_setno();
+		gpSched_ScheduleEvent( 1000000L, LED_SetOk_Control );
+        ControllerOperationMode = gpController_OperationModeNormal;
+    }
+    else
+    {
+		gpSched_UnscheduleEvent(Setup_Timeout_without_setno);
+		Setup_Timeout_without_setno();
+		gpSched_ScheduleEvent( 1000000L, LED_SetError_Control);
+        ControllerOperationMode = gpController_OperationModeNormal;
+    }
+}
+
 
 void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
                                     gpController_KeyBoard_Msg_t *pMsg)
@@ -1314,6 +1427,12 @@ void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
 							break;
 						}
 
+						case SET_SEARCH_TV_IR_CODE:
+						{
+							//Setup+A AutoSearch
+							setup_cbKeyIndicationSearchTvIrCode(msg.keys.codes[0]);
+							break;
+						}
 					}
 
 					return;

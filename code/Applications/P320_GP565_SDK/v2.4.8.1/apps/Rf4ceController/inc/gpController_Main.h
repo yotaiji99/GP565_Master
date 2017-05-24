@@ -104,6 +104,8 @@ extern UInt8 PowerToggle;
 extern gpController_Mode_t             gpController_Mode;                  //current controller application mode
 extern gpController_cbKeyIndication_t  gpController_cbKeyIndication; //function pointer used to forward the key-information to the mode/setup specific handling
 extern UInt8 ControllerOperationSpecial;
+extern searchTvIrCode_t     gpSetup_TvHunt;
+extern void setup_SearchTvIrCodeNextAttempt( void );
 extern UInt32 gpStatus_NumberOfSentIR;
 extern UInt32 gpStatus_NumberOfSentRF;
 GP_API UInt8 ControllerOperationMode;
