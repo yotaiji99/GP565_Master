@@ -35,13 +35,14 @@
 #include "gpController_KeyBoard.h"
 #include "gpSched.h"
 #include "gpKeyScan.h"
+#include "gpController_Main.h"
 /*******************************************************************************
  *                      Defines
  ******************************************************************************/
 #define GP_COMPONENT_ID GP_COMPONENT_ID_APP
 
-#define KEYBOARD_NUMBER_OF_ROWS           6
-#define KEYBOARD_NUMBER_OF_COLUMNS        5
+#define KEYBOARD_NUMBER_OF_ROWS           7
+#define KEYBOARD_NUMBER_OF_COLUMNS        6
 
 #define KEYBOARD_MATRIX_SIZE     (   KEYBOARD_NUMBER_OF_ROWS * \
                                                     KEYBOARD_NUMBER_OF_COLUMNS)

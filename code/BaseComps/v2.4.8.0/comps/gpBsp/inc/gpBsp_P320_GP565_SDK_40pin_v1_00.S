@@ -72,6 +72,8 @@
     clu.ds #(0x02C5),   %r2, %r2 //row_drive_period
     clu.ds #(0x02CC),   %r2, %r2 //results_stable_counter
     clu.ds #(0x02CD),   %r2, %r2 //number_of_keys|single_key_scan|single_key_sense
+    clu.ds #(0x02CE),   %r2, %r2 //key_vector_0
+    clu.ds #(0x02CF),   %r2, %r2 //key_vector_1
     clu.ds #(0x02D0),   %r2, %r2 //key_vector_2
     clu.ds #(0x02D1),   %r2, %r2 //key_vector_3
     clu.ds #(0x02D2),   %r2, %r2 //key_vector_4

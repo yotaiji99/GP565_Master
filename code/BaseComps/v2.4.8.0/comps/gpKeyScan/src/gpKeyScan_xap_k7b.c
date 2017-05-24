@@ -42,6 +42,7 @@
 #include "gpSched.h"
 #include "gpLog.h"
 #include "gpKeyScan.h"
+#include "gpController_Main.h"
 
 /*****************************************************************************
  *                    Macro Definitions
@@ -180,7 +181,7 @@ void KeyScan_PollOrInt(UInt8 timeout)
 
     //Keyscan waiting for interrupt again
     gpKeyScan_ScanmodeInterrupt = true;
-    GP_LOG_PRINTF("poll2int",0);
+//    GP_LOG_SYSTEM_PRINTF("KeyScan_PollOrInt",0); /* grn LED on */
 
     //Check keys before finishing this interrupt mode initialization
     keyp_senses = (gpKeyScan_LowVoltage || gpKeyScan_StuckKeyHandling) ? 0xFF : KeyScan_GetKeypadSenses();
@@ -311,6 +312,7 @@ INTERRUPT_H void handleKeypInt(void)
     HAL_ENABLE_GLOBAL_INT();
 
     //process key interrupt
+//    GP_LOG_SYSTEM_PRINTF("process key interrupt",0); /* grn LED on */
 
     //Clear interrrupt flag
     GP_WB_KEYPAD_SCAN_CLEAR_KEYPAD_INTERRUPT();
@@ -332,7 +334,7 @@ INTERRUPT_H void handleKeypInt(void)
         //(gpKeyScan_Stable==2 && gpKeyScan_NumberOfKeys==0) is needed to cover the case of an "empty keyboard scan" right after the external event
 
         //Event should not be scheduled anymore
-        GP_ASSERT_DEV_EXT( !gpSched_UnscheduleEvent(KeyScan_HandleKeyChange));      // not sure ==> DEV_EXT?
+//        GP_ASSERT_DEV_EXT( !gpSched_UnscheduleEvent(KeyScan_HandleKeyChange));      // not sure ==> DEV_EXT?
         //Schedule interrupt handling
         gpSched_ScheduleEvent(0, KeyScan_HandleKeyChange);
     }

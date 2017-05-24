@@ -50,13 +50,13 @@
 #define HAL_KEY_MAPPING 0 //Mapping A
 
 //Normal and debug masks
-#define HAL_KEY_INPUT_MASK  (BM(1) | BM(2) | BM(3) | BM(4) | BM(5))
-#define HAL_KEY_INPUT_MASK_SPI_ENABLED  (BM(1) | BM(2) | BM(3) | BM(4) | BM(5))
-#define HAL_KEY_INPUT_MASK_UART_ENABLED (BM(1) | BM(2) | BM(3) | BM(4) | BM(5))
+#define HAL_KEY_INPUT_MASK  (BM(1) | BM(2) | BM(3) | BM(4) | BM(5) | BM(7))
+#define HAL_KEY_INPUT_MASK_SPI_ENABLED  (BM(1) | BM(2) | BM(3) | BM(4) | BM(5) | BM(7))
+#define HAL_KEY_INPUT_MASK_UART_ENABLED (BM(1) | BM(2) | BM(3) | BM(4) | BM(5) | BM(7))
 
-#define HAL_KEY_OUTPUT_MASK (BM(2) | BM(3) | BM(4) | BM(5) | BM(6) | BM(7))
-#define HAL_KEY_OUTPUT_MASK_SPI_ENABLED  (BM(2) | BM(3) | BM(4) | BM(5) | BM(6) | BM(7))
-#define HAL_KEY_OUTPUT_MASK_UART_ENABLED (BM(2) | BM(3) | BM(4) | BM(5) | BM(6) | BM(7))
+#define HAL_KEY_OUTPUT_MASK (BM(0) | BM(1) | BM(2) | BM(3) | BM(4) | BM(5) | BM(6))
+#define HAL_KEY_OUTPUT_MASK_SPI_ENABLED  (BM(0) | BM(1) | BM(2) | BM(3) | BM(4) | BM(5) | BM(6))
+#define HAL_KEY_OUTPUT_MASK_UART_ENABLED (BM(0) | BM(1) | BM(2) | BM(3) | BM(4) | BM(5) | BM(6))
 
 //Used masks
 #define KEY_INPUT_MASK  (HAL_KEY_INPUT_MASK  & (HAL_DEBUG_IS_SPI_ENABLED() ? (HAL_KEY_INPUT_MASK_SPI_ENABLED)  : 0xFF) & (HAL_DEBUG_IS_UART_ENABLED() ? HAL_KEY_INPUT_MASK_UART_ENABLED   : 0xFF))
@@ -76,6 +76,8 @@ static inline void KeyScan_Init(void)
     /* Input mask */ 
     GP_WB_WRITE_KEYPAD_SCAN_MATRIX_SENSES(KEY_INPUT_MASK);
     /* Pull up inputs */ 
+    /*Disable interrupt line for external MCU - shared on Pin 21 - KEY_IN0_a - GPIO0*/
+    GP_WB_WRITE_IOB_MCU_INTOUTN_PINMAP(GP_WB_ENUM_GENERIC_SINGLE_PINMAP_NOT_MAPPED);
     //Disable SPI block ==> shared on  Pin 22 - KEY_IN1_a - GPIO1*/
     GP_WB_WRITE_MSI_SERIAL_ITF_SELECT(GP_WB_ENUM_SERIAL_ITF_SELECT_NO_INTERFACE); 
     GP_WB_WRITE_SPI_SL_PINMAP(GP_WB_ENUM_GENERIC_SINGLE_PINMAP_NOT_MAPPED);
@@ -90,19 +92,22 @@ static inline void KeyScan_Init(void)
     GP_WB_WRITE_IOB_GPIO_3_CFG(GP_WB_ENUM_GPIO_MODE_PULLUP);
     //Disable SPI block ==> shared on  Pin 25 - KEY_IN4_a - GPIO4*/
     GP_WB_WRITE_MSI_SERIAL_ITF_SELECT(GP_WB_ENUM_SERIAL_ITF_SELECT_NO_INTERFACE); 
-    GP_WB_WRITE_SPI_SL_PINMAP(GP_WB_ENUM_GENERIC_SINGLE_PINMAP_NOT_MAPPED);
-    GP_WB_WRITE_IOB_GPIO_4_CFG(GP_WB_ENUM_GPIO_MODE_PULLUP);
+    GP_WB_WRITE_SPI_SL_PINMAP(GP_WB_ENUM_GENERIC_SINGLE_PINMAP_NOT_MAPPED);    
+	GP_WB_WRITE_IOB_GPIO_4_CFG(GP_WB_ENUM_GPIO_MODE_PULLUP);
     GP_WB_WRITE_IOB_GPIO_5_CFG(GP_WB_ENUM_GPIO_MODE_PULLUP);
+//    GP_WB_WRITE_IOB_GPIO_6_CFG(GP_WB_ENUM_GPIO_MODE_PULLUP);
+    GP_WB_WRITE_IOB_GPIO_7_CFG(GP_WB_ENUM_GPIO_MODE_PULLUP);
 
     /* Output mask */
     GP_WB_WRITE_KEYPAD_SCAN_MATRIX_SCANS(KEY_OUTPUT_MASK);
     /* Set outputs floating */
+    GP_WB_WRITE_IOB_GPIO_8_CFG(GP_WB_ENUM_GPIO_MODE_FLOAT);
+    GP_WB_WRITE_IOB_GPIO_9_CFG(GP_WB_ENUM_GPIO_MODE_FLOAT);
     GP_WB_WRITE_IOB_GPIO_10_CFG(GP_WB_ENUM_GPIO_MODE_FLOAT);
     GP_WB_WRITE_IOB_GPIO_11_CFG(GP_WB_ENUM_GPIO_MODE_FLOAT);
     GP_WB_WRITE_IOB_GPIO_12_CFG(GP_WB_ENUM_GPIO_MODE_FLOAT);
     GP_WB_WRITE_IOB_GPIO_13_CFG(GP_WB_ENUM_GPIO_MODE_FLOAT);
     GP_WB_WRITE_IOB_GPIO_14_CFG(GP_WB_ENUM_GPIO_MODE_FLOAT);
-    GP_WB_WRITE_IOB_GPIO_15_CFG(GP_WB_ENUM_GPIO_MODE_FLOAT);
 }
 static inline void KeyScan_SetWakeupMode(UInt8 mode)
 {
@@ -111,42 +116,47 @@ static inline void KeyScan_SetWakeupMode(UInt8 mode)
     GP_WB_WRITE_PMUD_WAKEUP_PIN_MODE_3(mode);
     GP_WB_WRITE_PMUD_WAKEUP_PIN_MODE_4(mode);
     GP_WB_WRITE_PMUD_WAKEUP_PIN_MODE_5(mode);
+    GP_WB_WRITE_PMUD_WAKEUP_PIN_MODE_7(mode);
 }
 
 static inline UInt8 KeyScan_CompressRow(UInt8 row)
 {
     UInt8 trans = 0x0;
 
-    if(row & BM(1)) trans |= BM(0); //Pin 22 - KEY_IN1_a
-    if(row & BM(2)) trans |= BM(1); //Pin 23 - KEY_IN2_a
-    if(row & BM(3)) trans |= BM(2); //Pin 24 - KEY_IN3_a
-    if(row & BM(4)) trans |= BM(3); //Pin 25 - KEY_IN4_a
-    if(row & BM(5)) trans |= BM(4); //Pin 26 - KEY_IN5_a
+    if(row & BM(1)) trans |= BM(0); //Pin 21 - KEY_IN0_a
+    if(row & BM(2)) trans |= BM(1); //Pin 22 - KEY_IN1_a
+    if(row & BM(3)) trans |= BM(2); //Pin 23 - KEY_IN2_a
+    if(row & BM(4)) trans |= BM(3); //Pin 24 - KEY_IN3_a
+    if(row & BM(5)) trans |= BM(4); //Pin 25 - KEY_IN4_a
+    if(row & BM(7)) trans |= BM(5); //Pin 26 - KEY_IN5_a
 
     return trans;
 }
 
 static void KeyScan_GenerateScanIndication(UInt8* pStatus)
 {
-    //6 rows x 5 columns - 30 keys
-    UInt8 compressed[4] = {0x0}; 
+    //7 rows x 6 columns - 42 keys
+    UInt8 compressed[6] = {0x0};
     UInt8 tempRow;
 
+    tempRow = KeyScan_CompressRow(pStatus[0]); //5 columns
+    compressed[0] |= tempRow & 0x3F; //bit 0-4
+    tempRow = KeyScan_CompressRow(pStatus[1]); //5 columns
+    compressed[0] |= (tempRow << 6) & 0xC0; //bit 5-7
+    compressed[1] |= (tempRow >> 2) & 0x0F; //bit 8-9
     tempRow = KeyScan_CompressRow(pStatus[2]); //5 columns
-    compressed[0] |= tempRow & 0x1F; //bit 0-4
+    compressed[1] |= (tempRow << 4) & 0xF0; //bit 10-14
+    compressed[2] |= (tempRow >> 4) & 0x03; //bit 16-19
     tempRow = KeyScan_CompressRow(pStatus[3]); //5 columns
-    compressed[0] |= (tempRow << 5) & 0xE0; //bit 5-9
-    compressed[1] |= (tempRow >> 3) & 0x03;
+    compressed[2] |= (tempRow << 2) & 0xFC; //bit 20-23
     tempRow = KeyScan_CompressRow(pStatus[4]); //5 columns
-    compressed[1] |= (tempRow << 2) & 0x7C; //bit 10-14
+    compressed[3] |= tempRow & 0x3F; //bit 0-4
     tempRow = KeyScan_CompressRow(pStatus[5]); //5 columns
-    compressed[1] |= (tempRow << 7) & 0x80; //bit 15-19
-    compressed[2] |= (tempRow >> 1) & 0x0F;
+    compressed[3] |= (tempRow << 6) & 0xC0; //bit 5-7
+    compressed[4] |= (tempRow >> 2) & 0x0F; //bit 8-9
     tempRow = KeyScan_CompressRow(pStatus[6]); //5 columns
-    compressed[2] |= (tempRow << 4) & 0xF0; //bit 20-24
-    compressed[3] |= (tempRow >> 4) & 0x01;
-    tempRow = KeyScan_CompressRow(pStatus[7]); //5 columns
-    compressed[3] |= (tempRow << 1) & 0x3E; //bit 25-29
+    compressed[4] |= (tempRow << 4) & 0xF0; //bit 10-14
+    compressed[5] |= (tempRow >> 4) & 0x03; //bit 16-19
 
     gpKeyScan_cbScanIndication(compressed);
 }
