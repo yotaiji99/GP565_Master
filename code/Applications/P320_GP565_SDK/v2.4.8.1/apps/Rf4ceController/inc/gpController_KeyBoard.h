@@ -62,6 +62,86 @@
 #define gpController_KeyBoard_MsgId_SetupEnteredIndication          0x07
 
 
+#define gpController_KeyBoard_CommandCodeSelect                        0x00
+#define gpController_KeyBoard_CommandCodeUp                            0x01
+#define gpController_KeyBoard_CommandCodeDown                          0x02
+#define gpController_KeyBoard_CommandCodeLeft                          0x03
+#define gpController_KeyBoard_CommandCodeRight                         0x04
+#define gpController_KeyBoard_CommandCodeRightUp                       0x05
+#define gpController_KeyBoard_CommandCodeRightDown                     0x06
+#define gpController_KeyBoard_CommandCodeLeftUp                        0x07
+#define gpController_KeyBoard_CommandCodeLeftDown                      0x08
+#define gpController_KeyBoard_CommandCodeRootMenu                      0x09
+#define gpController_KeyBoard_CommandCodeSetupMenu                     0x0A
+#define gpController_KeyBoard_CommandCodeContentsMenu                  0x0B
+#define gpController_KeyBoard_CommandCodeFavoriteMenu                  0x0C
+#define gpController_KeyBoard_CommandCodeExit                          0x0D
+#define gpController_KeyBoard_CommandCodeNumber0                       0x20
+#define gpController_KeyBoard_CommandCodeNumber1                       0x21
+#define gpController_KeyBoard_CommandCodeNumber2                       0x22
+#define gpController_KeyBoard_CommandCodeNumber3                       0x23
+#define gpController_KeyBoard_CommandCodeNumber4                       0x24
+#define gpController_KeyBoard_CommandCodeNumber5                       0x25
+#define gpController_KeyBoard_CommandCodeNumber6                       0x26
+#define gpController_KeyBoard_CommandCodeNumber7                       0x27
+#define gpController_KeyBoard_CommandCodeNumber8                       0x28
+#define gpController_KeyBoard_CommandCodeNumber9                       0x29
+#define gpController_KeyBoard_CommandCodeDot                           0x2A
+#define gpController_KeyBoard_CommandCodeEnter                         0x2B
+#define gpController_KeyBoard_CommandCodeClear                         0x2C
+#define gpController_KeyBoard_CommandCodeNextFavorite                  0x2F
+#define gpController_KeyBoard_CommandCodeChannelUp                     0x30
+#define gpController_KeyBoard_CommandCodeChannelDown                   0x31
+#define gpController_KeyBoard_CommandCodePreviousChannel               0x32
+#define gpController_KeyBoard_CommandCodeSoundSelect                   0x33
+#define gpController_KeyBoard_CommandCodeInputSelect                   0x34
+#define gpController_KeyBoard_CommandCodeDisplayInformation            0x35
+#define gpController_KeyBoard_CommandCodeHelp                          0x36
+#define gpController_KeyBoard_CommandCodePageUp                        0x37
+#define gpController_KeyBoard_CommandCodePageDown                      0x38
+#define gpController_KeyBoard_CommandCodePower                         0x40
+#define gpController_KeyBoard_CommandCodeVolumeUp                      0x41
+#define gpController_KeyBoard_CommandCodeVolumeDown                    0x42
+#define gpController_KeyBoard_CommandCodeMute                          0x43
+#define gpController_KeyBoard_CommandCodePlay                          0x44
+#define gpController_KeyBoard_CommandCodeStop                          0x45
+#define gpController_KeyBoard_CommandCodePause                         0x46
+#define gpController_KeyBoard_CommandCodeRecord                        0x47
+#define gpController_KeyBoard_CommandCodeRewind                        0x48
+#define gpController_KeyBoard_CommandCodeFastForward                   0x49
+#define gpController_KeyBoard_CommandCodeEject                         0x4A
+#define gpController_KeyBoard_CommandCodeForward                       0x4B
+#define gpController_KeyBoard_CommandCodeBackward                      0x4C
+#define gpController_KeyBoard_CommandCodeStopRecord                    0x4D
+#define gpController_KeyBoard_CommandCodePauseRecord                   0x4E
+#define gpController_KeyBoard_CommandCodeAngle                         0x50
+#define gpController_KeyBoard_CommandCodeSubPicture                    0x51
+#define gpController_KeyBoard_CommandCodeVideoOnDemand                 0x52
+#define gpController_KeyBoard_CommandCodeElectronicProgramGuide        0x53
+#define gpController_KeyBoard_CommandCodeTimerProgramming              0x54
+#define gpController_KeyBoard_CommandCodeInitialConfiguration          0x55
+#define gpController_KeyBoard_CommandCodePlayFunction                  0x60    /*Additional operands*/
+#define gpController_KeyBoard_CommandCodePausePlayfunction             0x61
+#define gpController_KeyBoard_CommandCodeRecordFunction                0x62
+#define gpController_KeyBoard_CommandCodePauseRecordFunction           0x63
+#define gpController_KeyBoard_CommandCodeStopFunction                  0x64
+#define gpController_KeyBoard_CommandCodeMuteFunction                  0x65
+#define gpController_KeyBoard_CommandCodeRestoreVolumeFunction         0x66
+#define gpController_KeyBoard_CommandCodeTuneFunction                  0x67    /*Additional operands*/
+#define gpController_KeyBoard_CommandCodeSelectMediaFunction           0x68    /*Additional operands*/
+#define gpController_KeyBoard_CommandCodeSelectAVInputFunction         0x69    /*Additional operands*/
+#define gpController_KeyBoard_CommandCodeSelectAudioInputfunction      0x6A    /*Additional operands*/
+#define gpController_KeyBoard_CommandCodePowerToggleFunction           0x6B
+#define gpController_KeyBoard_CommandCodePowerOffFunction              0x6C
+#define gpController_KeyBoard_CommandCodePowerOnFunction               0x6D
+#define gpController_KeyBoard_CommandCodeF1Blue                        0x71
+#define gpController_KeyBoard_CommandCodeF2Red                         0x72
+#define gpController_KeyBoard_CommandCodeF3Green                       0x73
+#define gpController_KeyBoard_CommandCodeF4Yellow                      0x74
+#define gpController_KeyBoard_CommandCodeF5                            0x75
+#define gpController_KeyBoard_CommandCodeData                          0x76
+
+#define gpController_KeyBoard_CommandCodeNone                          0xFE
 
 /** @typedef gpController_KeyBoard_MsgId_t
  *  @brief The Keyboard module message IDs

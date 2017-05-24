@@ -75,9 +75,23 @@
 #define GP_PROGKEY_IRCODE_TXTIMINGDATA(code)        (gpIrTx_TransmissionTimingData_t*)((code)+8)
 #define APP_TV_IR_DATA_AVAILABLE                        0x01
 
+#define APP_KEYMAP_VOL_CTRL_INDEX           21
 
+#define APP_KEYMAP_TV_POWER_INDEX           36
+#define APP_KEYMAP_VOL_UP_INDEX           	21
+#define APP_KEYMAP_VOL_DN_INDEX           	33
+#define APP_KEYMAP_MUTE_INDEX  	          	07
+#define APP_KEYMAP_TV_INPUT_INDEX           20
+
+#define APP_NUMBER_OF_TV_IR_KEYS                        sizeof( controller_TvIrKey_LogicalKeyId )
+#define APP_NUMBER_OF_VOLUME_KEYS                       3
+#define APP_NUMBER_OF_TV_KEYS                           5
+#define APP_REGULAR_KEY_NUMBER_OF_KEYS                  29+2
+#define APP_TOTAL_NUMBER_OF_KEYS                        APP_REGULAR_KEY_NUMBER_OF_KEYS + APP_NUMBER_OF_VOLUME_KEYS + APP_NUMBER_OF_TV_KEYS
 #define SETUP_INVALID_INDEX             0xFFFF
 #define SETUP_INVALID_TV_CODE           0xFFFF
+#define APP_TV_IR_POWEROFF_INDEX            0
+#define APP_TV_IR_VOL_CTRL_INDEX            2
 /*******************************************************************************
  *                    Static Data Definitions
  ******************************************************************************/
@@ -128,82 +142,124 @@ typedef struct gpKeyVendorIdCode {
 } gpKeyVendorIdCode_t;
 
 
+UInt8 PowerToggle = 0;
+Bool gpController_PowerToggle;
 ProgrammableKey_KeyDesc_t gpProgrammableKey_Db[GP_PROGRAMMABLE_KEY_NUMBER_OF_KEYS];
 controller_KeyDesc_t controller_TvIrKey_Db[APP_NUMBER_OF_TV_IR_KEYS];
 UInt8 keyTransmitAction[ APP_TOTAL_NUMBER_OF_KEYS ];
+gpKeyboard_Command_t  gpKeyboard_Cmd = {gpKeyboard_CmdTypeInvalid, {0x0}};
 UInt16 gpDeviceID = 0xFFFF;             // default device id
+gpController_cbKeyIndication_t  gpController_cbKeyIndication; //function pointer used to forward the key-information to the mode/setup specific handling
 gpController_Mode_t             gpController_Mode=gpController_ModeIRNec;                  //current controller application mode
+
+//Static buffer needed for SetRIB request
 UInt8 gpStatus_RIBData[11];
+
+
 /* keyboard mapping needs to match gpController_KeyBoard module. */
 static const UInt8 ROM gpKeyCodeMap[] FLASH_PROGMEM =
 {
     /* r=row, c=column */
     /* r0, c0*/
-    /* 00 */    gpRf4ceActionControl_CommandCodeF4Yellow                    ,
     /* 01 */    gpRf4ceActionControl_CommandCodeF1Blue                      ,
-    /* 02 */    gpRf4ceActionControl_CommandCodeF2Red                       ,
-    /* 03 */    gpRf4ceActionControl_CommandCodeF3Green                     ,
+    /* 02 */    gpRf4ceActionControl_CommandCodePageDown                    ,
+    /* 03 */    gpRf4ceActionControl_CommandCodeNumber6                     ,
     /* 04 */    gpRf4ceActionControl_CommandCodeUp                          ,
-
-    /* r1, c0*/
-    /* 05 */    gpRf4ceActionControl_CommandCodeDown                        ,
-    /* 06 */    gpRf4ceActionControl_CommandCodeLeft                        ,
-    /* 07 */    gpRf4ceActionControl_CommandCodeRight                       ,
-    /* 08 */    gpRf4ceActionControl_CommandCodeChannelUp                   ,
-    /* 09*/     gpRf4ceActionControl_CommandCodeChannelDown                 ,
-
-    /* r2, c0*/
-    /* 10 */    gpRf4ceActionControl_CommandCodeRootMenu                    ,
-    /* 11 */    gpRf4ceActionControl_CommandCodeSetupMenu                   ,
-    /* 12 */    gpRf4ceActionControl_CommandCodeSelect                      ,
-    /* 13 */    gpRf4ceActionControl_CommandCodeExit                        ,
-    /* 14 */    gpRf4ceActionControl_CommandCodeElectronicProgramGuide      ,
-
-    /* r3, c0*/
-    /* 15 */    gpRf4ceActionControl_CommandCodeNumber0                     ,
-    /* 16 */    gpRf4ceActionControl_CommandCodeNumber1                     ,
+    /* 05 */    gpRf4ceActionControl_CommandCodeRight                       ,
+    /* 06 */    gpRf4ceActionControl_CommandCodeDown                        ,
+    /* 07 */    gpRf4ceActionControl_CommandCodeMute                        ,
+    /* 08 */    gpRf4ceActionControl_CommandCodeF3Green                     ,
+    /* 09 */    gpRf4ceActionControl_CommandCodeNumber9                     ,
+    /* 10 */    gpRf4ceActionControl_CommandCodeNumber8                     ,
+    /* 11 */    gpRf4ceActionControl_CommandCodeSelect                      ,
+    /* 12 */    gpRf4ceActionControl_CommandCodeDisplayInformation          ,
+    /* 13 */    gpRf4ceActionControl_CommandCodeRootMenu                    ,
+    /* 14 */    gpRf4ceActionControl_CommandCodeF2Red                       ,
+    /* 15 */    gpRf4ceActionControl_CommandCodeNone                        ,
+    /* 16 */    gpRf4ceActionControl_CommandCodeNumber5                     ,
     /* 17 */    gpRf4ceActionControl_CommandCodeNumber2                     ,
-    /* 18 */    gpRf4ceActionControl_CommandCodeNumber3                     ,
-    /* 19 */    gpRf4ceActionControl_CommandCodeNumber4                     ,
-
-    /* r4, c0*/
-    /* 20 */    gpRf4ceActionControl_CommandCodeNumber5                     ,
-    /* 21 */    gpRf4ceActionControl_CommandCodeNumber6                     ,
-    /* 22 */    gpRf4ceActionControl_CommandCodeNumber7                     ,
-    /* 23*/     gpRf4ceActionControl_CommandCodeNumber8                     ,
-    /* 24 */    gpRf4ceActionControl_CommandCodeNumber9                     ,
-
-    /* r5, c0*/
-    /* 25 */    gpRf4ceActionControl_CommandCodePowerToggleFunction         ,
-    /* 26 */    gpRf4ceActionControl_CommandCodeVolumeDown                  ,
-    /* 27 */    gpRf4ceActionControl_CommandCodeVolumeUp                    ,
-    /* 28 */    gpRf4ceActionControl_CommandCodeMute                        ,
-    /* 29 */    gpRf4ceActionControl_CommandCodeInputSelect
+    /* 18 */    gpRf4ceActionControl_CommandCodeNumber0                     ,
+    /* 19 */    gpRf4ceActionControl_CommandCodeNone                        ,
+    /* 20 */    gpRf4ceActionControl_CommandCodeInputSelect		            ,
+    /* 21 */    gpRf4ceActionControl_CommandCodeVolumeUp                    ,								
+    /* 22 */    gpRf4ceActionControl_CommandCodeNumber1                     ,
+    /* 23 */    gpRf4ceActionControl_CommandCodeNone                        ,
+    /* 24 */    gpRf4ceActionControl_CommandCodeSetupMenu                   ,
+    /* 25 */    gpRf4ceActionControl_CommandCodeExit                        ,
+    /* 26 */    gpRf4ceActionControl_CommandCodeNumber4                     ,
+    /* 27 */    gpRf4ceActionControl_CommandCodeChannelUp					,
+    /* 28 */    gpRf4ceActionControl_CommandCodeLeft                        ,
+    /* 29 */    gpRf4ceActionControl_CommandCodeNumber3                     ,
+    /* 30 */    gpRf4ceActionControl_CommandCodePageUp			    	    ,
+    /* 31 */    gpRf4ceActionControl_CommandCodeF4Yellow                    ,
+    /* 32 */    gpRf4ceActionControl_CommandCodePreviousChannel             ,
+    /* 33 */    gpRf4ceActionControl_CommandCodeVolumeDown                  ,
+    /* 34 */    gpRf4ceActionControl_CommandCodeElectronicProgramGuide      ,
+    /* 35 */    gpRf4ceActionControl_CommandCodeNumber7			    	    ,                     								
+    /* 36 */    gpRf4ceActionControl_CommandCodeNone                        ,
+    /* 37 */    gpRf4ceActionControl_CommandCodeChannelDown					,
+    /* 38 */    gpRf4ceActionControl_CommandCodePageUp			    	    ,
+    /* 39 */    gpRf4ceActionControl_CommandCodeNone                        ,
+    /* 40 */    gpRf4ceActionControl_CommandCodePowerToggleFunction         ,
+    /* 41 */    gpRf4ceActionControl_CommandCodeNumber3                     ,
 };
 
-typedef struct gpKeyVendorIdCode {
-    UInt8 gpKeyCodeMap;
-    UInt8 gpKeyVendorIDCode;
-} gpKeyVendorIdCode_t;
+const UInt8 gpProgrammableKey_LogicalKeyId[GP_PROGRAMMABLE_KEY_NUMBER_OF_KEYS] = {
+    gpController_KeyBoard_CommandCodePowerToggleFunction,
+    gpController_KeyBoard_CommandCodePowerToggleFunction,
+    gpController_KeyBoard_CommandCodeVolumeUp,
+    gpController_KeyBoard_CommandCodeVolumeDown,
+	gpController_KeyBoard_CommandCodeMute,
+	gpController_KeyBoard_CommandCodeInputSelect    
+};
 
+///IR Default code
 static const gpKeyVendorIdCode_t ROM gpKeyVendorIdMap[] FLASH_PROGMEM =
 {
-    {gpRf4ceActionControl_CommandCodeNumber0,     0x00},
-    {gpRf4ceActionControl_CommandCodeNumber1,     0x01},
-    {gpRf4ceActionControl_CommandCodeNumber2,     0x02},
-    {gpRf4ceActionControl_CommandCodeNumber3,     0x03},
-    {gpRf4ceActionControl_CommandCodeNumber4,     0x04},
-    {gpRf4ceActionControl_CommandCodeNumber5,     0x05},
-    {gpRf4ceActionControl_CommandCodeNumber6,     0x06},
-    {gpRf4ceActionControl_CommandCodeNumber7,     0x07},
-    {gpRf4ceActionControl_CommandCodeNumber8,     0x08},
-    {gpRf4ceActionControl_CommandCodeNumber9,     0x09},
-    {gpRf4ceActionControl_CommandCodeF4Yellow,    0x0A},
-    {gpRf4ceActionControl_CommandCodeF1Blue,      0x0B},
-    {gpRf4ceActionControl_CommandCodeF2Red,       0x0C},
-    {gpRf4ceActionControl_CommandCodeF3Green,     0x0D},
-    {gpRf4ceActionControl_CommandCodeChannelUp,   0x0E},
-    {gpRf4ceActionControl_CommandCodeChannelDown, 0x0F}
+	/*KEY No.*/		/*KEY Index*/											/*Data*/
+	
+	/*01*/	{ gpRf4ceUserControl_CommandCodeF1Blue,                     0x44 },
+	/*02*/	{ gpRf4ceUserControl_CommandCodePageDown,                   0x61 },
+	/*03*/	{ gpRf4ceUserControl_CommandCodeNumber6,                    0x16 },
+	/*04*/	{ gpRf4ceUserControl_CommandCodeUp,                         0x46 },
+	/*05*/	{ gpRf4ceUserControl_CommandCodeRight,                      0x49 },
+	/*06*/	{ gpRf4ceUserControl_CommandCodeDown,                       0x48 },
+	/*07*/	{ gpRf4ceUserControl_CommandCodeMute,                       0x22 },
+	/*08*/	{ gpRf4ceUserControl_CommandCodeF3Green,                    0x42 },
+	/*09*/	{ gpRf4ceUserControl_CommandCodeNumber9,                    0x19 },
+	/*10*/	{ gpRf4ceUserControl_CommandCodeNumber8,                    0x18 },
+	/*11*/	{ gpRf4ceUserControl_CommandCodeSelect,                     0x47 },
+	/*12*/	{ gpRf4ceUserControl_CommandCodeDisplayInformation,         0x36 },
+	/*13*/	{ gpRf4ceUserControl_CommandCodeRootMenu,                   0x51 },
+	/*14*/	{ gpRf4ceUserControl_CommandCodeF2Red,                      0x41 },
+	/*15*/	{ gpRf4ceUserControl_CommandCodeNone,                       0xFE },
+	/*16*/	{ gpRf4ceUserControl_CommandCodeNumber5,                    0x15 },
+	/*17*/	{ gpRf4ceUserControl_CommandCodeNumber2,                    0x12 },
+	/*18*/	{ gpRf4ceUserControl_CommandCodeNumber0,                    0x10 },
+	/*19*/	{ gpRf4ceUserControl_CommandCodeNone,                       0xFE },
+	/*20*/	{ gpRf4ceUserControl_CommandCodeInputSelect,                0x00 },
+	/*21*/	{ gpRf4ceUserControl_CommandCodeVolumeUp,                   0x32 },
+	/*22*/	{ gpRf4ceUserControl_CommandCodeNumber1,                    0x11 },
+	/*23*/	{ gpRf4ceUserControl_CommandCodeNone,                       0xFE },
+	/*24*/	{ gpRf4ceUserControl_CommandCodeSetupMenu,                  0x71 },
+	/*25*/	{ gpRf4ceUserControl_CommandCodeExit,                       0x52 },
+	/*26*/	{ gpRf4ceUserControl_CommandCodeNumber4,                    0x14 },
+	/*27*/	{ gpRf4ceUserControl_CommandCodeChannelUp,                  0x34 },
+//	/*27*/	{ gpRf4ceUserControl_CommandCodeChannelDown,                0x35 },
+	/*28*/	{ gpRf4ceUserControl_CommandCodeLeft,                       0x45 },
+	/*29*/	{ gpRf4ceUserControl_CommandCodeNumber3,                    0x13 },
+	/*30*/	{ gpRf4ceUserControl_CommandCodePageUp,                     0x64 },
+	/*31*/	{ gpRf4ceUserControl_CommandCodeF4Yellow,                   0x43 },
+	/*32*/	{ gpRf4ceUserControl_CommandCodePreviousChannel,            0x28 },
+	/*33*/	{ gpRf4ceUserControl_CommandCodeVolumeDown,                 0x33 },
+	/*34*/	{ gpRf4ceUserControl_CommandCodeElectronicProgramGuide,     0x31 },
+	/*35*/	{ gpRf4ceUserControl_CommandCodeNumber7,                    0x17 },
+	/*36*/	{ gpRf4ceUserControl_CommandCodeNone,                       0xFE },
+	/*37*/	{ gpRf4ceUserControl_CommandCodeChannelDown,                0x35 },
+	/*38*/	{ gpRf4ceUserControl_CommandCodePageUp,                     0x64 },
+	/*39*/	{ gpRf4ceUserControl_CommandCodeNone,                       0xFE },
+	/*40*/	{ gpRf4ceUserControl_CommandCodePowerOnFunction,            0x00 },
+	/*41*/	{ gpRf4ceUserControl_CommandCodeNumber3,                    0x13 },
 };
 
 static const gpController_Led_Sequence_t Controller_LedSequenceError =
@@ -1053,6 +1109,9 @@ void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
             {
                 Controller_LedEnable(true, gpController_Led_ColorGreen);
                 Controller_LedEnable(false, gpController_Led_ColorRed);
+            if(ControllerOperationMode == gpController_OperationModeNormal ||
+				ControllerOperationMode == gpController_OperationModeIR)
+            {
 
                 ControllerOperationMode = gpController_OperationModeSetup;
                 gpController_Setup_Msg(gpController_Setup_MsgId_SetupEnterIndication , NULL);

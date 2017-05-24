@@ -59,6 +59,17 @@
 typedef UInt8 gpController_Mode_t;
 
 typedef void (*gpController_cbKeyIndication_t)(gpKeyboard_pKeyInfo_t pKey);
+#define GP_PROGKEY_MAX_IRCODE_SIZE                      80
+#define APP_STATISTICS_TX_KEY_INDEX                     25
+#define KEY_POWER                          1	//15
+#define KEY_VOL_UP                         2	//6
+#define KEY_VOL_DN                         3	//22
+#define KEY_MUTE	                       4	//21
+
+#define SET_BLINK_TV_IR_CODE				1
+#define SET_BLINK_SW_VERSION				2
+#define SET_SEARCH_TV_IR_CODE				3
+#define SET_BLINK_BATTERY_STATUS			4
 
 typedef struct controller_TvIrDesc_s
 {
@@ -83,6 +94,9 @@ typedef struct  {
 
 extern Bool gpController_SelectDeviceInDatabase( UInt16 deviceId );
 extern void setup_cbKeyIndicationSearchTvIrCode( gpKeyboard_pKeyInfo_t pKey );
+extern Bool gpController_PowerToggle;
+extern UInt8 PowerToggle;
+extern gpController_Mode_t             gpController_Mode;                  //current controller application mode
 extern gpController_cbKeyIndication_t  gpController_cbKeyIndication; //function pointer used to forward the key-information to the mode/setup specific handling
 extern UInt32 gpStatus_NumberOfSentIR;
 extern UInt32 gpStatus_NumberOfSentRF;
