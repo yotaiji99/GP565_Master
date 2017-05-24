@@ -36,6 +36,7 @@
 #include "gpSched.h"
 #include "gpLog.h"
 #include "gpAssert.h"
+#include "gpController_BatteryMonitor.h"
 
 #ifdef GP_DIVERSITY_APP_ZRC2_0
 extern void Rf4ceBound_clearHeartBeat(UInt8 bindingId);
@@ -241,6 +242,7 @@ static void gpController_MSO_cbRIBSetConfirm(gpRf4ce_Result_t status , UInt8 bin
     msg.RIBSetConfirmParams.status = status;
     msg.RIBSetConfirmParams.attributeIndex = ribAttributeIndex;
         
+	gpController_BatterMonitor_BatteryLevelLoadedUpdated = false;
     if(ribAttribute == gpRf4ceRib_RIBAttributeIdBatteryStatus)
     {
         gpController_Mso_cbMsg(gpController_Mso_MsgId_cbSendBatteryStatusConfirm, &msg);

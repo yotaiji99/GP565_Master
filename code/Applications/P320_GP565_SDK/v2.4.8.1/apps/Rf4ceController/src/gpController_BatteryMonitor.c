@@ -36,6 +36,7 @@
 #include "gpBatteryMonitor.h"
 #include "gpAssert.h"
 #include "gpKeyscan.h"
+#include "gpController_Main.h"
 
 /*******************************************************************************
  *                      Defines
@@ -47,8 +48,8 @@
 
 #define STATUS_DOUBLE_INTERVAL   (                                   (1<<(BATTERY_STATUS_INTERVAL_EXPONENT+1))) /*2^(GP_STATUS_INTERVAL_EXPONENT+1) * 1/64 V*/
 #define STATUS_INTERVAL          (                                   (1<<(BATTERY_STATUS_INTERVAL_EXPONENT  ))) /*2^(GP_STATUS_INTERVAL_EXPONENT)   * 1/64 V*/
-#define STATUS_HALF_INTERVAL     ((BATTERY_STATUS_INTERVAL_EXPONENT==0)?0:(1<<(BATTERY_STATUS_INTERVAL_EXPONENT-1))) /*2^(GP_STATUS_INTERVAL_EXPONENT-1) * 1/64 V*/
-
+#define STATUS_HALF_INTERVAL     ( (GP_STATUS_INTERVAL_EXPONENT<1)?0:(1<<(GP_STATUS_INTERVAL_EXPONENT-1))) /*2^(GP_STATUS_INTERVAL_EXPONENT-1) * 1/64 V*/
+#define STATUS_QUARTER_INTERVAL  ( (GP_STATUS_INTERVAL_EXPONENT<2)?0:(1<<(GP_STATUS_INTERVAL_EXPONENT-2))) /*2^(GP_STATUS_INTERVAL_EXPONENT-2) * 1/64 V*/
 /*******************************************************************************
  *                      Type definitions
  ******************************************************************************/
@@ -59,11 +60,14 @@
 static UInt8 gpController_BatteryMonitor_RoundToInterval(UInt8 unrounded);
 static void gpController_BatteryMonitor_SetLoadedLevel(UInt8 batLevelLoaded);
 static Bool gpController_BatteryMonitor_CheckLowVoltageCallback(void);
-static void gpController_BatteryMonitor_Measure(Bool forceLoadedBatteryMeasurement);
+void gpController_BatteryMonitor_Measure(Bool forceLoadedBatteryMeasurement);
 
 /*******************************************************************************
  *                      Static data Declarations
  ******************************************************************************/
+Bool  gpStatus_BatteryReplaced             = false;
+static UInt32 gpStatus_BatteryLevelUnloadedHistory = 0;
+static UInt32 gpStatus_BatteryLevelLoadedHistory   = 0;
 Bool  gpController_BatterMonitor_BatteryLevelLoadedUpdated   = false; 
 UInt8 gpController_BatterMonitor_BatteryLevelUnloaded        = 0xE0; 
 UInt8 gpController_BatterMonitor_BatteryLevelLoaded          = 0xE0; 
@@ -148,7 +152,8 @@ static void gpController_BatteryMonitor_SetLoadedLevel(UInt8 batLevelLoaded)
 {
     UInt8 referenceLevel = gpController_BatteryMonitor_RoundToInterval(gpController_BatterMonitor_BatteryLevelLoaded);
 
-    if (batLevelLoaded < (referenceLevel - STATUS_INTERVAL))        /*significant drop detected*/
+    if ((batLevelLoaded < (referenceLevel - STATUS_INTERVAL))
+	   ||(batLevelLoaded > (referenceLevel + STATUS_INTERVAL)))        /*significant drop detected*/
     {
         gpController_BatterMonitor_BatteryLevelLoaded = batLevelLoaded;
         gpController_BatterMonitor_BatteryLevelLoadedUpdated = true;
@@ -171,16 +176,114 @@ static Bool gpController_BatteryMonitor_CheckLowVoltageCallback(void)
     }
 }
 
-static void gpController_BatteryMonitor_Measure(Bool forceLoadedBatteryMeasurement)
+static UInt8 Status_RoundToInterval(UInt8 unrounded)
 {
-    UInt8 newLevelUnloaded, newLevelLoaded;     
+    UInt8 rounded;
+
+    //Add half an INTERVAL
+    rounded = unrounded + STATUS_HALF_INTERVAL;
+    //Floor, by setting the STATUS_INTERVAL_EXPONENT LSB's to zero.
+    rounded = rounded >> GP_STATUS_INTERVAL_EXPONENT;
+    rounded = rounded << GP_STATUS_INTERVAL_EXPONENT;
+
+    return rounded;
+}
+
+static void Status_GetMinMaxVoltage(UInt32 voltageHistory, UInt8 *minValOut, UInt8 *maxValOut)
+{
+    UInt8 idx;
+    UInt8 minVal;
+    UInt8 maxVal;
+
+    minVal = (UInt8)(voltageHistory & 0xFF);
+    maxVal = minVal;
+
+    for (idx=8; idx<(/*STATUS_MEASUREMENT_HISTORY_SIZE*/3*8); idx+=8)
+    {
+         UInt8 val = (UInt8)((voltageHistory>>idx)&0xFF);
+         if (val < minVal)
+         {
+             minVal = val;
+         }
+         else if (maxVal < val)
+         {
+             maxVal = val;
+         }
+    }
+    *minValOut = minVal;
+    *maxValOut = maxVal;
+}
+
+static Bool Status_IsVoltageStable(UInt32 voltageHistory, UInt8 diff)
+{
+    UInt8 minVal, maxVal;
+    Status_GetMinMaxVoltage(voltageHistory, &minVal, &maxVal);
+    return (maxVal - minVal) <= diff;
+}
+
+static Bool Status_IsUnloadedVoltageStable(void)
+{
+    return Status_IsVoltageStable(gpStatus_BatteryLevelUnloadedHistory,STATUS_QUARTER_INTERVAL);
+}
+
+static Bool Status_IsLoadedVoltageStable(void)
+{
+    return Status_IsVoltageStable(gpStatus_BatteryLevelLoadedHistory,STATUS_HALF_INTERVAL);
+}
+
+static void Status_UpdateVoltageHistory(UInt32 *history, Bool initializeBatteryLevels, UInt8 voltage)
+{
+    UInt8 idx;
+    UInt8 numShifts = 1;
+    if (initializeBatteryLevels)
+    {
+        /* (re)set full history to this value */
+        numShifts = 3;	//STATUS_MEASUREMENT_HISTORY_SIZE;
+    }
+    for (idx=0; idx < numShifts; ++idx)
+    {
+        *history = *history << 8;
+        *history |= voltage;
+    }
+}
+
+static void Status_UpdateLoadedVoltageHistory(Bool initializeBatteryLevels, UInt8 lastLoaded)
+{
+    Status_UpdateVoltageHistory(&gpStatus_BatteryLevelLoadedHistory, initializeBatteryLevels, lastLoaded);
+}
+
+static void Status_UpdateUnLoadedVoltageHistory(Bool initializeBatteryLevels, UInt8 lastUnLoaded)
+{
+    Status_UpdateVoltageHistory(&gpStatus_BatteryLevelUnloadedHistory, initializeBatteryLevels, lastUnLoaded);
+}
+
+static void Status_SetBatteryLevelLoaded(UInt8 newLevelLoaded)
+{
+    gpController_BatterMonitor_BatteryLevelLoaded = newLevelLoaded;
+    gpController_BatterMonitor_BatteryLevelUnloaded = true;
+    gpKeyScan_RegisterCheckLowVoltageCallback(gpController_BatterMonitor_BatteryLevelLoaded <= BATTERY_LOW_LEVEL?gpController_BatteryMonitor_CheckLowVoltageCallback:NULL);
+}
+
+static UInt8 Status_MeasureLoaded(Bool initializeBatteryLevels)
+{
+    UInt8 newLevelLoaded;
+    gpBatteryMonitor_Measure(gpBatteryMonitor_MeasurementTypeLoaded, &newLevelLoaded);
+    Status_UpdateLoadedVoltageHistory(initializeBatteryLevels, newLevelLoaded);
+    return newLevelLoaded;
+}
+
+void gpController_BatteryMonitor_Measure(Bool forceLoadedBatteryMeasurement)
+{
+    UInt8 newLevelUnloaded, newLevelLoaded, referenceLevel;     
 
     /* Battery unloaded measurement */
     gpBatteryMonitor_Measure( gpBatteryMonitor_MeasurementTypeUnloadedWithoutRecovery, &newLevelUnloaded );
 
-    if (forceLoadedBatteryMeasurement || (newLevelUnloaded < (gpController_BatterMonitor_BatteryLevelUnloaded - STATUS_INTERVAL)))  /*significant drop detected*/
+    if (forceLoadedBatteryMeasurement
+	|| (newLevelUnloaded < (gpController_BatterMonitor_BatteryLevelUnloaded - STATUS_INTERVAL))  /*significant drop detected*/
+    || (newLevelUnloaded > (gpController_BatterMonitor_BatteryLevelUnloaded + STATUS_INTERVAL)))  /*significant increase detected*/
     {
-//        Battery_SetUnloadedLevel(newLevelUnloaded);
+        gpController_BatteryMonitor_SetLoadedLevel(newLevelUnloaded);
         gpController_BatterMonitor_BatteryLevelUnloaded = newLevelUnloaded;
         
         /* Battery loaded measurement */
@@ -188,6 +291,40 @@ static void gpController_BatteryMonitor_Measure(Bool forceLoadedBatteryMeasureme
 
         gpController_BatteryMonitor_SetLoadedLevel(newLevelLoaded);
         
+        //Perform loaded measurement
+        newLevelLoaded = Status_MeasureLoaded(false);
+		#if 1
+        if (newLevelLoaded > gpController_BatterMonitor_BatteryLevelUnloaded)
+        {
+            newLevelLoaded = gpController_BatterMonitor_BatteryLevelUnloaded;
+        }
+
+        referenceLevel = Status_RoundToInterval(gpController_BatterMonitor_BatteryLevelLoaded);
+
+        if ( forceLoadedBatteryMeasurement
+          || (newLevelLoaded < (referenceLevel - STATUS_INTERVAL))        /*significant drop detected*/
+          || (newLevelLoaded > (referenceLevel + STATUS_DOUBLE_INTERVAL))   /*very significant increase detected => new battery detected*/
+          /* Smaller but stable increase detected => probably bad startup measurement */
+          || ( Status_IsLoadedVoltageStable()
+               && (newLevelLoaded > (referenceLevel + STATUS_HALF_INTERVAL))
+             )
+           )
+        {
+            if (newLevelLoaded > (referenceLevel + STATUS_DOUBLE_INTERVAL)) /*New battery detected*/
+            {
+                gpStatus_BatteryReplaced = true;
+                gpStatus_NumberOfSentIR = 0;
+                gpStatus_NumberOfSentRF = 0;
+                //gpController_cbBatteryReplaced();
+            }
+            else
+            {
+                gpStatus_BatteryReplaced = false;
+            }
+            Status_SetBatteryLevelLoaded(newLevelLoaded);
+        }
+
+		#endif
     }
     
     /* Keyscan workaround at critical battery voltage */

@@ -426,7 +426,17 @@ static void Setup_SelectCommand(gpController_Keys_t keys, UInt8 paramLength,UInt
 	            break;
 	        }
 
-	        case BLINK_TV_IR_CODE:	//setupEA special mode·I AøAO.
+	        case BLINK_BATTERY_STATUS:
+	        {
+                gpSched_UnscheduleEvent(Setup_Timeout);
+                SETUP_INDICATION(gpController_Setup_MsgId_cbSetupLeftIndication);
+	            //ControllerOperationMode = gpController_OperationModeNormal;
+	            ControllerOperationMode = gpController_OperationSetsequence;
+	            gpSched_ScheduleEvent( 1000000L, gpController_CheckBatteryLevel);
+	            break;
+	        }
+
+	        case BLINK_TV_IR_CODE:	//setup후 special mode로 진입.
 	        {
                 gpSched_UnscheduleEvent(Setup_Timeout);
                 SETUP_INDICATION(gpController_Setup_MsgId_cbSetupLeftIndication);

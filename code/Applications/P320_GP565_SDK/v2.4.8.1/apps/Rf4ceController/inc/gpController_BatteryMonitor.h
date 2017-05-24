@@ -43,9 +43,11 @@
 /*******************************************************************************
  *                    Defines
  ******************************************************************************/
+#define GP_STATUS_INTERVAL_EXPONENT             (2)           /* Interval is 2^GP_STATUS_INTERVAL_EXPONENT * 1/64 V*/
+
 #define BATTERY_HIGH_LEVEL            (0x80 | 0x2C) /* 2.6875 V*/
 #define BATTERY_MEDIUM_LEVEL          (0x80 | 0x24) /* 2.5625 V*/
-#define BATTERY_LOW_LEVEL             (0x80 | 0x1C) /* 2.4375 V*/
+#define BATTERY_LOW_LEVEL             (0x80 | 0x18) /* 2.4375 V*/
 #define BATTERY_CRITICAL_LEVEL        (0x80 | 0x0C) /* 2.1875 V*/
 
 
@@ -143,5 +145,11 @@ GP_API void gpController_BatteryMonitor_Init(void);
  */
 GP_API void gpController_BatteryMonitor_Msg(  gpController_BatteryMonitor_MsgId_t msgId,
                                    gpController_BatteryMonitor_Msg_t *pMsg);
+
+GP_API Bool  gpStatus_BatteryReplaced;
+GP_API UInt8 gpController_BatterMonitor_BatteryLevelUnloaded; 
+GP_API UInt8 gpController_BatterMonitor_BatteryLevelLoaded; 
+GP_API Bool  gpController_BatterMonitor_BatteryLevelLoadedUpdated;
+GP_API void gpController_BatteryMonitor_Measure(Bool forceLoadedBatteryMeasurement);
 
 #endif /* _GPCONTROLLER_BATTERYMONITOR_H_ */

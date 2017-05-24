@@ -98,6 +98,7 @@ extern void gpController_SetDtaMode( Bool mode );
 extern void setup_cbKeyIndicationSearchTvIrCode( gpKeyboard_pKeyInfo_t pKey );
 extern void LED_SetOk_Control(void);
 extern void LED_SetError_Control(void);
+extern void gpController_CheckBatteryLevel(void);
 extern gpController_Led_Sequence_t Controller_LedSequenceBlinkIR;
 extern Bool gpController_PowerToggle;
 extern UInt8 PowerToggle;

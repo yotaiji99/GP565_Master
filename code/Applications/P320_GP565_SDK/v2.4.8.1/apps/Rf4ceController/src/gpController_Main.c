@@ -100,6 +100,12 @@
 #define SETUP_INVALID_TV_CODE           0xFFFF
 #define APP_TV_IR_POWEROFF_INDEX            0
 #define APP_TV_IR_VOL_CTRL_INDEX            2
+
+#define gpStatus_UpdateTypeRF       0
+#define gpStatus_UpdateTypeIR       1
+UInt32 gpStatus_NumberOfSentIR = 0;
+UInt32 gpStatus_NumberOfSentRF = 0;
+
 /*******************************************************************************
  *                    Static Data Definitions
  ******************************************************************************/
@@ -344,6 +350,7 @@ static void gpController_Zid_ReportConfirm(gpRf4ce_Result_t status);
 static void App_DoReset(void);
 
 void setup_cbKeyIndicationSearchTvIrCode( gpKeyboard_pKeyInfo_t pKey );
+static void LED_BatteryLow_Indicate(void);
 /*******************************************************************************
  *                    Helper functions
  *******************************************************************************/
@@ -407,6 +414,22 @@ void LED_SetError_Control(void)
 	#endif
 }
 
+void LED_BatteryLow_Indicate(void)
+{
+    if(gpController_BatterMonitor_BatteryLevelLoaded <= BATTERY_LOW_LEVEL)
+    {
+//		if (ControllerOperationMode != gpController_OperationSetsequence) 
+//		if(	!LedSequenceBlink)
+		{
+            //Critical level reached - everything is a battery low blink
+			LedSequenceBlink=true;
+            gpLed_GenerateBlinkSequence( gpController_Led_ColorRed, 50,40,20,5 );
+			gpController_Led_Msg(gpController_Led_MsgId_SequenceIndication,&Controller_LedSequenceBlinkIR);
+		}
+
+    }
+	
+}
 /*******************************************************************************
  *                    ZRC 2.0 and 1.1 Callback Functions
  ******************************************************************************/
@@ -960,9 +983,19 @@ Bool Controller_HandleIRKeys(gpController_Zrc_Msg_t *pZrc,gpController_KeyBoard_
     gpProgrammableKey_TvIrDesc_t* pDesc;
     if((pZrc->KeyPressedIndication.keys.count == 0))
     {
+    	//설정모드일경우,lvd표시하지않음.
+    	if(ControllerOperationMode != gpController_OperationSetsequence)
+			gpSched_ScheduleEvent(100000L,LED_BatteryLow_Indicate);
+		else
 			ControllerOperationMode = gpController_OperationModeNormal;
+
         if(ControllerOperationMode == gpController_OperationModeIR)
         {
+	        gpStatus_UpdateBatteryStatus(gpStatus_UpdateTypeIR);
+		    if (gpController_BatterMonitor_BatteryLevelLoadedUpdated)
+		    {
+				gpSched_ScheduleEvent(0, gpController_SendBatteryStatusRequest);
+		    }
             ControllerOperationMode = gpController_OperationModeNormal;
             return true;
         }
@@ -1320,6 +1353,36 @@ void setup_cbKeyIndicationSearchTvIrCode( gpKeyboard_pKeyInfo_t pKey )
     }
 }
 
+void gpStatus_UpdateBatteryStatus(UInt8 type)
+{
+    gpController_BatteryMonitor_Msg_t BatteryMonitorMsg;
+    Bool forceLoadedBatteryMeasurement = false;
+
+    GP_LOG_PRINTF("us %x",2,type);
+
+    //RF press
+    if(type == gpStatus_UpdateTypeRF)
+    {
+        gpStatus_NumberOfSentRF++;
+        if((gpStatus_NumberOfSentRF & 0xF) == 0x0) //Every 16 presses
+        {
+            forceLoadedBatteryMeasurement = true;
+        }
+
+    }
+    //IR press
+    else if(type == gpStatus_UpdateTypeIR)
+    {
+        gpStatus_NumberOfSentIR++;
+        if((gpStatus_NumberOfSentIR & 0xF) == 0x0) //Every 16 presses
+        {
+            forceLoadedBatteryMeasurement = true;
+        }
+    }
+	gpController_BatteryMonitor_Measure(forceLoadedBatteryMeasurement);
+
+}
+
 
 void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
                                     gpController_KeyBoard_Msg_t *pMsg)
@@ -1453,6 +1516,7 @@ void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
 				gpController_KeyBoard_Msg_t tmpKeycnt=*pMsg;
 				UInt8 	i;
 				UInt8 	TxBuffer[1];
+			    UInt8 	batLevel;
                 Controller_KeyIndicesToKeyCodes(&(pMsg->keys), &(msgZrc.KeyPressedIndication.keys));
 
 #ifdef GP_DIVERSITY_APP_ZID
@@ -1476,11 +1540,29 @@ void gpController_KeyBoard_cbMsg(   gpController_KeyBoard_MsgId_t msgId,
                 if( (ControllerProfileId == gpRf4ce_ProfileIdZrc) ||
                     (ControllerProfileId == gpRf4ce_ProfileIdMso))
                 {
-                    if((msgZrc.KeyPressedIndication.keys.count > 1) || (msgZrc.KeyPressedIndication.keys.count == 0))
+                    if(msgZrc.KeyPressedIndication.keys.count > 1) 
                     {
                         /* Generate release */
                         msgZrc.KeyPressedIndication.keys.count = 0;
+			            //gpController_KeyBoard_cbMsg(gpController_KeyBoard_MsgId_KeysReleasedIndication, NULL);
+						//gpSched_UnscheduleEvent(Keyboard_SetupKeyPressed);				        
+						gpStatus_UpdateBatteryStatus(gpStatus_UpdateTypeRF);
+					    if (gpController_BatterMonitor_BatteryLevelLoadedUpdated)
+					    {
+							gpSched_ScheduleEvent(0, gpController_SendBatteryStatusRequest);
+					    }
                     }
+					else if(msgZrc.KeyPressedIndication.keys.count == 0)
+					{
+                        /* Generate release */
+                        msgZrc.KeyPressedIndication.keys.count = 0;
+			            //gpController_KeyBoard_cbMsg(gpController_KeyBoard_MsgId_KeysReleasedIndication, NULL);
+				        gpStatus_UpdateBatteryStatus(gpStatus_UpdateTypeRF);
+					    if (gpController_BatterMonitor_BatteryLevelLoadedUpdated)
+					    {
+							gpSched_ScheduleEvent(0, gpController_SendBatteryStatusRequest);
+					    }
+					}
                 }
                 msgZrc.KeyPressedIndication.bindingId = ControllerBindingId;
                 msgZrc.KeyPressedIndication.profileId = ControllerProfileId;
@@ -1980,6 +2062,58 @@ static void gpController_UnbindConfirm(UInt8 bindingId)
     }
 }
 
+void gpController_CheckBatteryLevel(void)
+{
+    gpController_BatteryMonitor_Msg_t BatteryMonitorMsg;
+	volatile UInt8 value;
+	volatile UInt8 value2;
+	
+    BatteryMonitorMsg.measurementType = gpController_BatteryMonitor_LoadedAndUnloaded;
+    /*Trigger a battery voltage measurement. Results will be reported through BattyrMonitorMsg parameter*/
+    gpController_BatteryMonitor_Msg(gpController_BatteryMonitor_MsgId_GetBatteryLevel, &BatteryMonitorMsg);
+	value = BatteryMonitorMsg.measurementResult.BatteryLevelLoaded;
+
+	BATTERY_TRANSLATE_LEVEL_TO_ZRC20(value, value2);
+
+	switch(value2)
+	{
+		case 0x0f:
+		{
+			//High level(3.0v)
+            LED_Sequence_Control(Controller_LedSequenceTest1);
+
+			break;
+		}
+		case 0x0c:
+		{
+			//Medium level(2.75v)
+            LED_Sequence_Control(Controller_LedSequenceTest2);
+            LED_Sequence_Control(Controller_LedSequenceTest3);
+
+			break;
+		}
+		case 0x08:
+		{
+			//Low level(2.5v)
+            LED_Sequence_Control(Controller_LedSequenceTest3);
+            LED_Sequence_Control(Controller_LedSequenceTest2);
+
+			break;
+		}
+		case 0x04:
+		{
+			//Critical level(2.25v)
+            LED_Sequence_Control(Controller_LedSequenceTest4);
+
+			break;
+		}
+		default:
+		{
+			break;
+		}
+	}
+
+}
 static void gpController_SendBatteryStatusRequest(void)
 {
     gpController_BatteryMonitor_Msg_t BatteryMonitorMsg;
