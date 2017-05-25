@@ -51,6 +51,11 @@
     clu.ds #(0x0206),   %r2, %r2 //gpio8_output_value|gpio9_output_value|gpio10_output_value|gpio11_output_value|gpio12_output_value|gpio13_output_value|gpio14_output_value|gpio15_output_value
     clu.ds #(0x0207),   %r2, %r2 //gpio16_output_value|gpio17_output_value|gpio18_output_value|gpio19_output_value|gpio20_output_value|gpio21_output_value|gpio22_output_value|gpio23_output_value
     clu.ds #(0x0208),   %r2, %r2 //gpio24_output_value|gpio25_output_value|gpio26_output_value|gpio27_output_value|gpio28_output_value|gpio29_output_value
+/* twi_ms */
+    clu.ds #(0x0220),   %r2, %r2 //prescaler
+    clu.ds #(0x0220+1), %r2, %r2 //prescaler_1
+    clu.ds #(0x0222),   %r2, %r2 //sda_pinmap|sclk_pinmap
+    clu.ds #(0x0223),   %r2, %r2 //enable|ack|clk_sync_disable
 /* adcif */
     clu.ds #(0x0240),   %r2, %r2 //trigger_mode|nbr_of_rejected_conversions|nbr_of_slots_in_cycle
     clu.ds #(0x0241),   %r2, %r2 //slot_a_channel|slot_a_post_to_rssi|slot_a_post_to_buffer_a|slot_a_post_to_buffer_b|slot_a_post_to_fifo
@@ -103,6 +108,8 @@
     clu.ds #(0x0326),   %r2, %r2 //threshold_3
     clu.ds #(0x0329),   %r2, %r2 //led2_output_pinmap|led2_output_drive|led2_output_invert|led2_allow_gotosleep_when_on
     clu.ds #(0x032A),   %r2, %r2 //led3_output_pinmap|led3_output_drive|led3_output_invert|led3_allow_gotosleep_when_on
+/* spi_sl */
+    clu.ds #(0x0342),   %r2, %r2 //tx_latency|pinmap
 /* rib */
     clu.ds #(0x0400),   %r2, %r2 //rx_pbm_ptr|rx_pbm_ptr_valid
     clu.ds #(0x040A),   %r2, %r2 //bypass_tx_delay|disable_radio_when_no_free_pbm|restart_packet_det_when_pip|disable_trc_clk_gating
