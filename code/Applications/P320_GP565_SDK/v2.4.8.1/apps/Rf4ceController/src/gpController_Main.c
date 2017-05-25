@@ -1031,7 +1031,7 @@ Bool Controller_HandleIRKeys(gpController_Zrc_Msg_t *pZrc,gpController_KeyBoard_
             return false;
         }
     }
-    }
+
 
 //power,input은 모두 TV로 출력.
 	if((pZrc->KeyPressedIndication.keys.codes[0]==gpRf4ceActionControl_CommandCodePowerToggleFunction)
@@ -1354,7 +1354,7 @@ void setup_cbKeyIndicationSearchTvIrCode( gpKeyboard_pKeyInfo_t pKey )
             gpController_SelectDeviceInDatabase( gpSetup_TvHunt.lastAttemptedTvCode );
             // also make sure the controller 'knows' to send to the TV
             gpController_SetDtaMode( false );            
-            gpSetup_BlinkFail = false;
+//            gpSetup_BlinkFail = false;
         }
 		gpSched_UnscheduleEvent(Setup_Timeout_without_setno);
 		//Setup_Timeout_without_setno();
